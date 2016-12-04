@@ -27,12 +27,11 @@ if [[ -n "$GUI" ]]; then
 if [ ! -w $BASE ]; then
 echo "It seems that $BASE is on read-only media, booting from CD maybe?"
 BASE=/root
-else
+fi
 # Select folder to download to:
 SAVEFOLDER=$(yad  --center --image="application-x-squashfs" --image-on-top --title="Select folder to download SFS modules" --file --filename "$BASE" --directory --height=600 --width=800 --text=" Select folder to download SFS modules to" )
 ret=$?
 [[ $ret -ne 0 ]] && exit 1
-fi
 
 URILIST="`echo "$GUI" | sed "s,^,$DLHOSTDIR/," | tr '\n' ' '`"
 
