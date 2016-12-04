@@ -1,0 +1,34 @@
+#!/bin/bash
+
+### fredx181 sfsget, SFS downloader, very much based on ppack by stu90 ###
+### depends on yad, elinks, wget ###
+
+if [ -z `which gsu` ]; then
+[ "`whoami`" != "root" ] && exec gksu ${0} "$@"
+else
+[ "`whoami`" != "root" ] && exec gsu ${0} "$@"
+fi
+
+RESTART=$0
+TITLE="SFSget"
+VER="0.1"
+TEXT=" Download .squashfs modules. Pick a category first. "
+
+GUI=$(yad --center --image="application-x-squashfs" --image-on-top --window-icon="application-x-squashfs" --title="$TITLE $VER" --text="$TEXT"  --geometry="525x320" --icons --read-dir="/usr/local/sfsget/desktop/" --single-click \
+--button="Search:1" --button="Exit:0" )
+button1=$?
+case $button1 in
+
+0)
+  echo "Exiting" && exit  
+;;
+1)
+SEARCH="/usr/local/sfsget/script/search &"
+  echo "search for package" && $SEARCH && $RESTART && exit 
+;;
+esac
+
+
+ 
+
+
