@@ -81,11 +81,11 @@ Utility=$(echo $Utility | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
 echo "$Utility" >> /tmp/sfsget_search
 
 # all items to search for in /tmp/sfsget_search
-ALL=$(while read line; do echo $line |grep -i "$search"; done <<< "$(cat /tmp/sfsget_search)")
+ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$search"; done <<< "$(cat /tmp/sfsget_search)")
 
-GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column " Available Modules" $ALL --column Name --hide-column=1 --button="gtk-go-back:1"  --button="gtk-ok:0")
+GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column=":IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
 button1=$?
-
+echo $GUI1
 case $button1 in
 
 1) 
@@ -104,7 +104,7 @@ SAVEFOLDER=$(yad  --center --image="application-x-squashfs" --image-on-top --tit
 ret=$?
 [[ $ret -ne 0 ]] && exit 1
 
-URILIST="`echo "$GUI1" | rev | sed 's| |/|2g' | rev | tr '\n' ' '`"
+URILIST="`echo "$GUI1" | rev | sed 's| |/|2' | rev | tr '\n' ' '`"
 
 # Select folder to download to:
 #SAVEFOLDER=$(yad  --center --image="browser-dload" --image-on-top --title="Select target folder" --file --height=600 --width=800 --text=" Select target folder for downloads" )
