@@ -1,7 +1,7 @@
 Package: remaster-scripts
 Maintainer: fredx181 dog@root.nl
 Architecture: all
-Version: 1.0.6
+Version: 1.0.7
 Installed-Size: 57
 Depends: libc6, yad, coreutils, menu, squashfs-tools, mount, sed, xterm, rsync, dpkg, findutils, procps, gsu | gksu
 Description: Warning - This package works only in DebianDog! In ver. 1.0.3 fixed progress bar bug for very old PC.
