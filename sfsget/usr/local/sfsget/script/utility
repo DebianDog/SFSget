@@ -7,8 +7,8 @@ TITLE=" Utility Applications "
 ICON="browserdload"                     # window icon (appears in launcher)
 IMAGE="browserdload"
 TEXT1="             <b>Downloads</b> in progress:"        # dialog text
-export HOSTDIR="https://github.com/DebianDog/SFSget_Extramodules-Jessie/releases/tag/Utility/"
-export DLHOSTDIR="https://github.com/DebianDog/SFSget_Extramodules-Jessie/releases/download/Utility/"
+export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Utility/"
+export DLHOSTDIR="https://github.com/DebianDog/SFSget/releases/download/Utility/"
 
 ALL=$(while read line; do echo application-x-squashfs `basename $line`; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Utility' | awk '/https/{print $2}')") 
 #ALL="$CONTENTFILE"

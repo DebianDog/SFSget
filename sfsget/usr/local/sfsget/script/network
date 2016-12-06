@@ -7,8 +7,8 @@ TITLE=" Network Applications "
 ICON="browserdload"                     # window icon (appears in launcher)
 IMAGE="browserdload"
 TEXT1="             <b>Downloads</b> in progress:"        # dialog text
-export HOSTDIR="https://github.com/DebianDog/SFSget_Extramodules-Jessie/releases/tag/Network/"
-export DLHOSTDIR="https://github.com/DebianDog/SFSget_Extramodules-Jessie/releases/download/Network/"
+export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Network/"
+export DLHOSTDIR="https://github.com/DebianDog/SFSget/releases/download/Network/"
 
 ALL=$(while read line; do echo application-x-squashfs `basename $line`; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Network' | awk '/https/{print $2}')") 
 #ALL="$CONTENTFILE"
