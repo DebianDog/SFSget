@@ -1,0 +1,13 @@
+#!/bin/sh
+# postinst script for apt2sfs
+#
+# see: dh_installdeb(1)
+
+set -e
+. /usr/share/debconf/confmodule
+
+update-menus
+
+db_stop;
+
+exit 0

@@ -1,0 +1,295 @@
+#!/bin/bash
+
+EXEC=`basename ${0}`
+
+tty -s 
+	if [ $? -ne 0 ]; then
+if [ $# -eq 0 ]; then
+	yad --borders 10 --title="::Error::" --text="You must provide a .squashfs or .sfs file. \nBy Drag and Drop or: from terminal: \n$EXEC /path/to/sfs-module" --button="gtk-close:0"
+	exit 0
+fi
+	fi
+
+if [ "$1" = "" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+echo -en "\nThis script will activate a module 'On the Fly', e.g. *.squashfs, *.xzm or *.sfs. \nUsage:\n`basename ${0}` </path/to/module> to activate \nOr: drag and drop the sfs-module on this script in filemanager.\n"
+exit 0
+fi
+
+if [ -z `which yad` ]; then
+	msg="  You don't have yad installed.\nIt's a dependency of this program.\n Please install it."
+	xmessage "`echo -e $msg`"
+exit 0
+fi
+
+if ! df | grep 'aufs '; then
+echo -e "It seems like you are running a full install, \nplease use load-sfs-chroot-full_install (from right-click menu in filemanager)"
+yad --title "Load-SFS" --text " It seems like you are running a full install, \n please use load-sfs-chroot-full_install (from right-click menu in filemanager)" --button="gtk-close:0"
+exit 0
+fi
+export LD_LIBRARY_PATH="/opt/lib:/usr/local/lib"
+
+if [ "`whoami`" != "root" ]; then
+echo $USER > /tmp/sfs-portable-user
+chmod 666 /tmp/sfs-portable-user
+exec gsu ${0} "$@"
+fi
+
+BUNDLE="$@"
+echo $BUNDLE
+
+if [ -f /mnt/live/tmp/modules ]; then
+MNTPATH=/mnt/live/memory/images
+NUM=`mount | grep $MNTPATH | wc -l`
+POSITION="$((${NUM} + 1))"
+else
+MNTPATH=/live
+NUM=`blkid -o list -c /dev/null | grep -P "squashfs" | grep "/live/\|(in use)" | wc -l`
+POSITION="$((${NUM} + 1))"
+fi
+echo $MNTPATH
+
+APP=$(readlink -e $0)
+[ "$APP" ] || APP=$0
+APPDIR=$(dirname "$APP")
+
+check_bundle_defined()
+{
+  if [ ! $BUNDLE ]; then
+    echo -e $Red"ERROR:"$Color_Off" Please define bundle name to de/activate"
+    exit 1
+  fi
+}
+
+get_bundle_load_positon()
+{
+  if [ ! $BUNDLE_POSITION ]; then
+    POSITION="1"
+  else
+    POSITION=$(echo $BUNDLE_POSITION | sed 's|^--||g')
+  fi
+}
+
+check_if_onaufs()
+{
+ APPDIR=$(dirname "$BUNDLE")
+ ALINE=$(df -m "$APPDIR"|tail -n1| tr -s ' ')
+ MYPLACE=$(echo $ALINE| cut -d' ' -f1)
+ APPDEV=$(echo $MYPLACE| grep '^/dev/')
+ 
+ if [ -z "$APPDEV" ]; then
+yad --text " ERROR: Trying to activate on the virtual storage, \n but $BUNDLE must be placed on an actual storage. " --button="gtk-close:0"
+exit 1
+fi
+}
+
+check_if_exists()
+{
+  if [ ! -f $BUNDLE ]; then
+    echo -e $Red"ERROR:"$Color_Off" Module '$BUNDLE' does not exist"
+    exit 1
+  fi
+}
+
+check_if_deactivated()
+{
+  if [ -d $MNTPATH/$BUNDLE ]; then
+    echo -e $Red"ERROR:"$Color_Off" Module '$BUNDLE' is already activated"
+yad --title="LoadModule" --center --width="400" --text=" Module '$BUNDLE' is already activated " --button="gtk-close:0"
+    exit 1
+  fi
+}
+
+check_if_activated()
+{
+  if [ ! -d $MNTPATH/$BUNDLE ]; then
+    echo -e $Red"ERROR:"$Color_Off" Module '$BUNDLE' is not currently activated"
+yad --title="LoadModule" --center --width="400" --text=" Module '$BUNDLE' is not currently activated " --button="gtk-close:0"
+    exit 1
+  fi
+}
+
+post_actions_check_if_needed()
+{
+  MODULES=$(ls $MNTPATH/$BUNDLE/lib/modules 2>/dev/null)
+  ICONS=$(ls $MNTPATH/$BUNDLE/usr/share/icons/hicolor 2>/dev/null)
+  DESKTOP=$(ls $MNTPATH/$BUNDLE/usr/share/applications 2>/dev/null)
+  GSETTINGS=$(ls $MNTPATH/$BUNDLE/usr/share/glib-2.0/schemas 2>/dev/null)
+  FONTS=$(ls $MNTPATH/$BUNDLE/usr/share/fonts/TTF 2>/dev/null)
+}
+
+post_actions_run_list()
+{
+  if [ "$MODULES" ]; then 
+    echo -e $Green"ACTION:"$Color_Off" updating loadable kernel modules list"
+    depmod -a
+  fi
+  if [ "$ICONS" ]; then 
+    echo -e $Green"ACTION:"$Color_Off" rebuilding the gtk+ icon cache"
+    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
+  fi
+  if [ "$DESKTOP" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating mimeinfo cache"
+    update-desktop-database &>/dev/null 2>&1
+    rm -r $HOME/.cache &>/dev/null 2>&1
+  fi
+  if [ "$GSETTINGS" ]; then
+    echo -e $Green"ACTION:"$Color_Off" gsettings xml schema files"
+    glib-compile-schemas /usr/share/glib-2.0/schemas &>/dev/null 2>&1
+  fi
+  if [ "$FONTS" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating font cache"
+    fc-cache -f -s > /dev/null
+    mkfontscale /usr/share/fonts/TTF
+    mkfontdir /usr/share/fonts/TTF
+  fi
+}
+
+bundle_activate()
+{
+  check_if_onaufs
+  check_bundle_defined
+
+  check_if_exists
+  check_if_deactivated
+  # get_bundle_load_positon
+  mkdir $MNTPATH/$BUNDLE
+  mount -o loop $BUNDLE $MNTPATH/$BUNDLE
+  mount -n -o remount,add:$POSITION:$MNTPATH/$BUNDLE=rr aufs /
+  if [ $? -eq 0 ]; then
+    echo -e $Green"SUCCESS:"$Color_Off" Module '$BUNDLE' activated"
+
+    post_actions_check_if_needed
+    post_actions_run_list
+#    update-menus
+# Ugly workaround for OpenBox version to update the menu:
+# Create a .desktop in /usr/share/applications with random name and remove it directly
+#    FILE=$RANDOM
+#    touch /usr/share/applications/$FILE.desktop && rm -f /usr/share/applications/$FILE.desktop
+
+  else
+    echo -e $Red"ERROR:"$Color_Off" Module '$BUNDLE' activate failed"
+yad --title="LoadModule" --center --width="400" --text=" ERROR: Module '$BUNDLE' activate failed " --button="gtk-close:0" &
+    umount $MNTPATH/$BUNDLE
+    rmdir $MNTPATH/$BUNDLE
+    wait
+exit 0
+  fi
+}
+
+bundle_deactivate()
+{
+  check_bundle_defined
+  check_if_activated
+  post_actions_check_if_needed
+  mount -t squashfs -n -o remount,del:$MNTPATH/$BUNDLE aufs /
+  umount $MNTPATH/$BUNDLE
+  rmdir $MNTPATH/$BUNDLE
+  if [ $? -eq 0 ]; then
+    echo -e $Green"SUCCESS:"$Color_Off" Module '$BUNDLE' deactivated"
+    post_actions_run_list
+#    update-menus
+# Ugly workaround for OpenBox version to update the menu:
+# Create a .desktop in /usr/share/applications with random name and remove it directly
+#    FILE=$RANDOM
+#    touch /usr/share/applications/$FILE.desktop && rm -f /usr/share/applications/$FILE.desktop
+    exit 0
+  else
+# Force unmount
+echo "Unmounting failed, so lets find out (by 'aubusy') which process is keeping it from unloading and kill it..."
+while read line; do
+kill $(echo "$line" | awk '{ print $1 }') 2> /dev/null 
+echo "$line" | awk '{ print $1 }'
+sleep 1
+done <<< "$(aubusy -v / $MNTPATH/$BUNDLE)"
+#fuser -mkv $MNTPATH/$BUNDLE
+echo
+echo "Ok, let's try unloading again now..."
+  mount -t squashfs -n -o remount,del:$MNTPATH/$BUNDLE aufs /
+  umount $MNTPATH/$BUNDLE
+  rmdir $MNTPATH/$BUNDLE
+	if [ $? -ne 0 ]; then
+yad --title="LoadModule" --center --width="400" --text=" ERROR: Module '$BUNDLE' deactivate failed " --button="gtk-close:0" &
+exit 0
+	else
+    post_actions_run_list
+#    update-menus
+# Ugly workaround for OpenBox version to update the menu:
+# Create a .desktop in /usr/share/applications with random name and remove it directly
+#    FILE=$RANDOM
+#    touch /usr/share/applications/$FILE.desktop && rm -f /usr/share/applications/$FILE.desktop
+echo "Module '$BUNDLE' deactivated"
+    exit 0
+	fi
+  fi
+}
+
+# Function to cleanly unmount if the script is interrupted
+exitfn () {
+rm -rf /tmp/sfs-portable-user
+rm -rf /.unionfs
+bundle_deactivate
+exit
+}
+
+trap "exitfn" 1 2 15           # Set up SIGINT trap to call function 'exitfn'.
+
+setup_tmpdir () {
+# Setup directory for .desktop lauchers (to read by yad --icons) and copy them
+mkdir /.unionfs
+cp -a "$MNTPATH/$(basename "$BUNDLE")"/usr/share/applications/*.desktop /.unionfs/
+
+# Remove extension (if any) from Icon= entry in .desktop files (only if not full path) 
+while read line; do
+ICON=$(grep -m 1 -r Icon= "$line" | cut -d "=" -f 2 | cut -d % -f 1)
+FULL=`echo "$ICON" | grep '/' 2> /dev/null`
+if [ -z "$FULL" ]; then
+BASE=`echo ${ICON%.*}`
+BASENAME="$(basename "$line")"
+sed -i 's#Icon=.*#Icon='"$BASE"'#g' "/.unionfs/$BASENAME"
+fi
+done <<< "$(ls /.unionfs/*.desktop)"
+
+# Create Xterm.desktop in /.unionfs
+echo '[Desktop Entry]
+Version=1.0
+Type=Application
+Name=XTerm
+Comment=standard terminal emulator for the X window system
+Exec=xterm
+Icon=xterm-color_48x48
+Path=
+Terminal=false
+StartupNotify=false
+' > /.unionfs/Xterm.desktop
+}
+
+	case $BUNDLE in
+
+	*.xzm|*.squashfs|*.sfs|*.sb)
+cd "`dirname "$BUNDLE"`"
+BUNDLE="`basename "$BUNDLE"`"
+POSITION=$POSITION
+bundle_activate
+setup_tmpdir
+sleep 1
+user=`cat /tmp/sfs-portable-user 2> /dev/null`
+rm -f /tmp/sfs-portable-user 2> /dev/null
+if [ -n "$user" ] && [ "$user" != "root" ]; then
+xhost +local:$user
+cd /
+sudo -u $user env LD_LIBRARY_PATH=/opt/lib:/usr/local/lib yad --icons --compact --read-dir="/.unionfs" --width 300 --height 300 --title "Applications" --text "     :: Doubleclick to run ::" --text-align="center" --button="gtk-close:0"
+else
+cd /
+yad --icons --compact --read-dir="/.unionfs" --width 300 --height 300 --title "Applications" --text "     :: Doubleclick to run ::" --text-align="center" --button="gtk-close:0"
+fi
+rm -rf /.unionfs
+bundle_deactivate
+;;
+	*)
+	yad --borders 8 --center --title="LoadSFS" --text=" Not a  valid module file,   \n Please try again.     " --button="gtk-close:0"
+	exit 0
+	;;
+	esac
+
+exit 0
+

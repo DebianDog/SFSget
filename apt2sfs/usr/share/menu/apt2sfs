@@ -1,0 +1,7 @@
+?package(apt2sfs):\
+	needs="X11"\
+	section="Applications/Utilities"\
+	title="Apt2sfs"\
+	command="apt2sfs"\
+	icon="/usr/share/pixmaps/apt2sfs.png"
+

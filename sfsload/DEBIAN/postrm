@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if [ -f /usr/share/applications/SFS-Load-GUI.desktop ]; then
+rm -f /usr/share/menu/sfsload
+
+
+else
+echo "Link does not exist."
+fi
+
+update-menus
+

@@ -1,0 +1,29 @@
+#!/bin/sh
+# postinst script for sfsload
+#
+# see: dh_installdeb(1)
+
+set -e
+
+
+obox() {
+if [ -f /usr/share/menu/sfsload ]; then
+echo "Menu entry exists."
+else
+echo '?package(sfsload):\
+	needs="X11"\
+	section="Applications/System/Administration"\
+	title="SFS-Load GUI"\
+	command="loadmodulegui"\
+	icon="/usr/share/pixmaps/sfsload.png"
+' > /usr/share/menu/sfsload
+
+fi
+}
+
+update-menus
+
+obox
+
+
+exit 0

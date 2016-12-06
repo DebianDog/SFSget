@@ -1,0 +1,37 @@
+#!/bin/bash
+
+LFONT="<span size='large' foreground='dark blue'><b>             *** LoadModule ***</b></span>"
+SETUP=`yad  --center --title="LoadModule"  --text=" $LFONT \n          <b>Activate or deactivate a module 'On the Fly'</b> \n Note: The module must be loaded from an "actual" storage e.g. /media/sda2  \n So loading from e.g.: /root or: / doesn't work.  \n Recommended is to use the 'no overwrite' mode. \n Nothing gets overwritten so there's very small risk breaking the system. " \
+--window-icon="preferences-system" --form --columns=1 \
+--field=" Activate or deactivate module: :CB" "Activate!Deactivate" \
+--field=" Choose a module. Extension can be: .squashfs, .xzm, .sfs or .sb :LBL" "" \
+--field=" Select a module: :FL" "/media/*" \
+--field=" Activate module in 'no overwrite' mode (more safe):CHK" "TRUE" \
+ --button="gtk-quit:1" --button="gtk-ok:0"`
+ ret=$?
+[[ $ret -ne 0 ]] && exit
+
+ACTIV="`echo $SETUP | cut -d "|" -f 1`"
+MODULE="`echo $SETUP | cut -d "|" -f 3`"
+NOOVERWRITE="`echo $SETUP | cut -d "|" -f 4`"
+
+case $MODULE in
+
+*.xzm|*.squashfs|*.sfs|*.sb)
+
+if [ "$ACTIV" = "Activate" ] && [ "$NOOVERWRITE" = "FALSE" ];then
+loadmodule -a "$MODULE"
+fi
+if [ "$ACTIV" = "Activate" ] && [ "$NOOVERWRITE" = "TRUE" ];then
+loadmodule -ano "$MODULE"
+fi
+if [ "$ACTIV" = "Deactivate" ];then
+loadmodule -d "$MODULE"
+fi
+;;
+*)
+yad --center --title="LoadModule" --text=" You must select a valid module file, \n Please run again." --button="gtk-close:0"
+exit 0
+;;
+esac
+

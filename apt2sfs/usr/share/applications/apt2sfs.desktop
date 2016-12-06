@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AptToSfs
+Comment=Create module from installed packages by apt-get
+Exec=apt2sfs
+Icon=apt2sfs
+Terminal=false
+StartupNotify=false
+Categories=Modules;DebianDog

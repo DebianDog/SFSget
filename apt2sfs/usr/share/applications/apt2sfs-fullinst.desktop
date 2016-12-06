@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=AptToSfs for Full Install
+Comment=Create module from installed packages by apt-get for full install
+Exec=apt2sfs-fullinst
+Icon=apt2sfs
+Terminal=false
+StartupNotify=false
+Categories=Modules;DebianDog

@@ -1,0 +1,602 @@
+#!/bin/bash
+
+# april 12 2015 apt2sfs version 1.0.4, Fred: added /tmp and / to the choice of where to create working dir and module.
+# april 12 2015 apt2sfs version 1.0.6, Fred: force being 'root' user in chroot 
+# febr 10 2016 apt2sfs version 1.0.8, Fred: Run the most part in xterm 
+# febr 10 2016 apt2sfs version 1.0.8, Fred: Added choice dialog for compression type, xz, gz and lz4
+# sep 22 2016 fix from saintless for /etc/resolv.conf in UNION in case resolv.conf is a symlink
+# okt 08 2016 Fred: if more than 100 chars, truncate working directory name to 100,
+# also to prevent error from mkdir 'filename too long' 
+
+sudo -K
+
+if [ -z `which gsu` ]; then
+[ "`whoami`" != "root" ] && exec gksu ${0} "$@"
+else
+[ "`whoami`" != "root" ] && exec gsu ${0} "$@"
+fi
+export SUDO_USER=root
+exe=$(basename $0)
+
+sudopid="$(ps -eo pid,cmd | grep -w "sudo $exe\|sudo $SUDO_COMMAND" | grep -v grep | grep -v "sudo xterm" | grep -v "sudo -S" | awk '{ print $1 }')"
+echo $sudopid
+[ "$sudopid" ] && echo -e "\e[0;33mPlease run without sudo, e.g. $SUDO_COMMAND,\nExiting now...\033[0m" && exit
+
+if [ -z `which unionfs-fuse` ]; then
+	msg="You don't have unionfs-fuse installed.\nIt's a dependency of this program.\n Please install it first."
+echo -e "\e[0;33m$msg\033[0m"
+	xmessage "`echo -e $msg`"
+exit 0
+fi
+
+if [ -z `which yad` ]; then
+	msg="  You don't have yad installed.\nIt's a dependency of this program.\n Please install it."
+	xmessage "`echo -e $msg`"
+exit 0
+fi
+
+if [ -z "$(df | grep 'aufs ')" ]; then
+msg="It seems like you are running a full install, \n this script doesn't support it."
+echo -e "\e[0;33m$msg\033[0m"
+xmessage "`echo -e $msg`"
+exit 0
+fi
+
+# Remove temp file from possible previous run
+rm -f /tmp/mnts /tmp/notrap_ 2> /dev/null
+
+LFONT="<span size='large' foreground='dark blue'><b>          *** Setup apt2sfs ***</b></span>"
+devs="$(blkid -o list | grep /dev | grep -E -v "swap|ntfs|vfat|crypt" | sort | cut -d" " -f1 | grep -E -v "/loop|sr0|swap" | sed 's|/dev/||g')"
+echo $devs
+DEVS=`echo $devs | sed 's/ /!/g'`
+SETUP=`yad --borders=6  --center --title="apt2sfs"  --text="  $LFONT \n Create module from temporary installed package(s) by apt-get. \n <b>Note: These packages will not be registered by dpkg. </b> \n Depending on the sort of application(s) it may work or not. \n An application depending on startup at boot might not work. \n The package(s) will be installed in chroot using 'unionfs-fuse'. \n (but in fact directly into binded write/working directory). \n This way no traces are left behind in the actual running system. \n First, required 'apt-get update' will run (in chroot)." \
+--window-icon="preferences-system" --form --columns=1 \
+--field="   Choose where to create new module,must be linux filesystem,\n   NTFS or FAT filesytems are excluded.  :LBL"  "" \
+--field=" :CB" "$DEVS!/tmp!/" \
+--field="   Type packagename(s) separated by a space: :LBL" "" \
+--field=" : " "" \
+ --button="gtk-quit:1" --button="gtk-ok:0"`
+ret=$?
+[[ $ret -ne 0 ]] && exit
+
+
+#export UNION=/mnt/unionsfs_$RANDOM; mkdir -p "$UNION"
+export DRV="`echo $SETUP | cut -d "|" -f 2`"
+export INSTALL="`echo $SETUP | cut -d "|" -f 4`"
+
+run_xterm () {
+# Function to cleanly unmount if the script is interrupted
+exitfn () {
+    trap SIGINT              # Resore signal handling for SIGINT
+cmd="apt-get install -y --force-yes $INSTALL"
+pdapt="`ps -eo pid,cmd | grep -v grep | grep "$cmd" | awk '{ print $1 }'`"
+kill $pdapt 2> /dev/null
+if [ ! -f /tmp/notrap_ ]; then 
+echo -e "\e[0;31mRestoring now, script was interrupted.\033[0m"
+	if [ "$UNIONCREATED" = "yes" ]; then
+   if [ "$RESTOREDONE" != "yes" ]; then
+# Unmount everything
+#umount "$UNION"/tmp
+umount "$UNION"/proc
+umount "$UNION"/dev/pts
+umount "$UNION"/dev
+umount "$UNION"/sys
+umount "$UNION"
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+#umount -l "$UNION"/tmp 2> /dev/null
+umount -l "$UNION"/proc 2> /dev/null
+umount -l "$UNION"/dev/pts 2> /dev/null
+umount -l "$UNION"/dev 2> /dev/null
+umount -l "$UNION"/sys 2> /dev/null
+umount -l "$UNION" 2> /dev/null
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+rmdir "$UNION"
+[ "$?" -eq 0 ] && echo -e "\e[0;32mSuccesfully unmounted and cleaned up!\033[0m"
+   else
+rmdir "$UNION" 2> /dev/null
+[ "$?" -eq 0 ] && echo -e "\e[0;32mSuccesfully unmounted and cleaned up!\033[0m"
+   fi
+rm -rf /.unionfs 2> /dev/null
+   fi
+	fi
+   if [ "$RESTOREDONE" != "yes" ]; then
+# Unmount all earlier mounted modules (live-boot only).
+if [ ! -f /mnt/live/tmp/modules ]; then
+    if grep -q /lib/live/mount /proc/mounts; then # live-boot v3
+cat /tmp/mnts |  while read mnt; do
+umount $mnt
+	if [ "$?" -ne 0 ]; then
+	echo "Try to gently force unmounting..."
+	umount -l $mnt
+	fi
+        rmdir $mnt
+	[ "$?" -eq 0 ] && echo "$mnt unmounted :)"
+done
+    else # live-boot v2 (only when 'showmounts' parameter is not used)
+        if grep -qv showmounts /proc/cmdline; then
+        cat /tmp/mnts | while read mnt; do
+        umount $mnt
+	if [ "$?" -ne 0 ]; then
+	echo "Try to gently force unmounting..."
+	umount -l $mnt
+	fi
+        rmdir $mnt
+	[ "$?" -eq 0 ] && echo "$mnt unmounted :)"
+        done
+        fi
+    fi
+fi
+   fi
+# Remove working directory
+  if [ -f "$SQFS" ]; then
+	if [[ -n "$SFS" && -n "$DRV" ]]; then
+	rm -rf "$WORK"
+	rm -f "$SQFS"
+if [ "$?" -eq 0 ]; then 
+msg="Script was interrupted. \nDirectory $WORK has been removed. \nModule $SFS.squashfs has been removed. "
+echo -e "\e[0;33m$msg\033[0m"
+	xmessage "`echo -e $msg`"
+fi
+	fi
+   else
+	if [[ -n "$SFS" && -n "$DRV" ]]; then
+	rm -rf "$WORK"
+if [ "$?" -eq 0 ]; then 
+msg="Script was interrupted. \nDirectory $WORK has been removed. \nModule $SFS.squashfs not created. "
+echo -e "\e[0;33m$msg\033[0m"
+	xmessage "`echo -e $msg`"
+fi
+	fi
+   fi
+fi
+rm -f /tmp/notrap_
+exit 0
+}
+export -f exitfn
+
+[ "$NOTRAP" = "" ] && trap "exitfn" 1 2 15           # Set up SIGINT trap to call function 'exitfn'.
+
+restore() {
+# Unmount everything
+#umount "$UNION"/tmp
+umount "$UNION"/proc
+umount "$UNION"/dev/pts
+umount "$UNION"/dev
+umount "$UNION"/sys
+umount "$UNION"
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+#umount -l "$UNION"/tmp 2> /dev/null
+umount -l "$UNION"/proc 2> /dev/null
+umount -l "$UNION"/dev/pts 2> /dev/null
+umount -l "$UNION"/dev 2> /dev/null
+umount -l "$UNION"/sys 2> /dev/null
+umount -l "$UNION"
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+rmdir "$UNION"
+[ "$?" -eq 0 ] && echo -e "\e[0;32mSuccesfully unmounted and cleaned up!\033[0m"
+   else
+rmdir "$UNION" 2> /dev/null
+[ "$?" -eq 0 ] && echo -e "\e[0;32mSuccesfully unmounted and cleaned up!\033[0m"
+   fi
+rm -rf /.unionfs 2> /dev/null
+
+sleep 2
+kill $pd 2> /dev/null
+# Unmount all earlier mounted modules (live-boot only).
+if [ ! -f /mnt/live/tmp/modules ]; then
+    if grep -q /lib/live/mount /proc/mounts; then # live-boot v3
+cat /tmp/mnts |  while read mnt; do
+umount $mnt
+	if [ "$?" -ne 0 ]; then
+	echo "Try to gently force unmounting..."
+	umount -l $mnt
+	fi
+        rmdir $mnt
+	[ "$?" -eq 0 ] && echo "$mnt unmounted :)"
+done
+    else # live-boot v2 (only when 'showmounts' parameter is not used)
+        if grep -qv showmounts /proc/cmdline; then
+        cat /tmp/mnts |  while read mnt; do
+        umount $mnt
+	if [ "$?" -ne 0 ]; then
+	echo "Try to gently force unmounting..."
+	umount -l $mnt
+	fi
+        rmdir $mnt
+	[ "$?" -eq 0 ] && echo "$mnt unmounted :)"
+        done
+        fi
+    fi
+fi
+   if [ -f "$WORK/tmp/_exit" ]; then
+	if [[ -n "$SFS" && -n "$DRV" ]]; then
+	rm -rf "$WORK"
+[ "$?" -eq 0 ] && echo -e "\e[0;32mDirectory $WORK has been removed.\033[0m"
+	fi
+read -s -n 1 -p "Press any key to close . . ."
+	exit
+   fi
+}
+export -f restore
+
+check_network() {
+echo -e "\e[0;36mChecking network connection...\033[0m"
+if ping -c1 google.com 2>&1 | grep unknown; then 
+echo -e "\e[0;33mThere is no network connection. Exiting...\033[0m"
+sleep 3
+touch /tmp/_exit
+else
+echo -e "\e[0;32mOK\033[0m"
+sleep 1
+fi
+}
+export -f check_network
+
+update_repo() {
+#echo bla > /etc/apt/sources.list
+echo -e "\e[0;36mUpdating package lists...\033[0m"
+apt-get update
+ret=$?
+if [[ $ret -eq 100 ]]; then
+[ "$?" -eq 0 ] && echo -e "\e[0;33m There are one or more errors with updating. \n Check your /etc/apt/sources.list.\033[0m"
+read -p "Still continue? (Y/n)?" choice
+
+case "$choice" in 
+  y|Y|"")
+echo -e "\e[0;32mOK, Continue\033[0m"
+;;
+  n|N)
+touch /tmp/_exit
+exit 0
+;;
+*)
+echo -e "\e[0;31mNot a valid choice, exiting....\033[0m"
+touch /tmp/_exit
+exit 0
+;;
+esac
+else
+echo -e "\e[0;32mOK\033[0m"
+sleep 1
+fi
+}
+export -f update_repo
+
+install_packages() {
+echo -e "\e[0;36mInstalling to working directory: $SFS\033[0m"
+sleep 1
+# Install the packages.
+apt-get install -y --force-yes $INSTALL | tee /tmp/aptout
+ret=`echo $PIPESTATUS`
+if [ "$ret" -eq 100 ]; then
+touch /tmp/_exit
+else
+CNT=`wc -l < /tmp/aptout`
+TEXT=`cat /tmp/aptout`
+if [ "$CNT" -lt 8 ]; then
+echo -e "\e[0;33mNothing has been installed or something unexpected occurred, apt-get output: \n $TEXT \n Will restore back to previous state now..\033[0m" 
+touch /tmp/_exit
+fi
+fi
+}
+export -f install_packages
+
+
+# Set variable for available and status file from the main module.
+if [ -f /mnt/live/tmp/modules ]; then # For porteus-boot
+NUM=$(find $(ls -d -1 /mnt/live/memory/images/*/var/lib/dpkg) \( ! -path "/mnt/live/memory/images/changes-exit/*" \)  -type f -name 'status' | wc -l)
+
+   if [ $NUM -gt 1 ]; then
+ALL=$(find $(ls -d -1 /mnt/live/memory/images/*/var/lib/dpkg) \( ! -path "/mnt/live/memory/images/changes-exit/*" \)  -type f -name 'status')
+   else
+AVAIL=$(find $(ls -d -1 /mnt/live/memory/images/*/var/lib/dpkg) \( ! -path "/mnt/live/memory/images/changes-exit/*" \)  -type f -name 'available' | head -1)
+STAT=$(find $(ls -d -1 /mnt/live/memory/images/*/var/lib/dpkg) \( ! -path "/mnt/live/memory/images/changes-exit/*" \)  -type f -name 'status' | head -1)
+   fi
+ALLMOD=$(find $(ls -d -1 /mnt/live/memory/images/*) -maxdepth 0 \( ! -path "/mnt/live/memory/images/changes-exit" \)  -type d)
+for i in $ALLMOD; do
+CHROOTFS=$i=RO:$CHROOTFS
+done
+
+else # For live-boot
+# First find out if we are possibly using live-boot v3
+	if grep -q /lib/live/mount /proc/mounts; then # If true we are using live-boot v3 and go on
+# Mount all loaded modules at boot in /live
+# For compatibility with other scripts using '/live/*' as mountpoint we will mount modules the same
+LOOP=$(blkid -o list -c /dev/null | grep -P "/lib/live/mount/rootfs" | awk '{print $1}')
+for i in  $LOOP; do
+cat /proc/mounts | grep ' squashfs ' | while read line; do
+LOOP=`echo ${line} | awk '{ print $1}'`
+MOD=`basename $(echo ${line} | awk '{ print $2}')`
+if [ $LOOP = $i ]; then
+mkdir /live/$MOD
+echo /live/$MOD >> /tmp/mnts # Store mountpoints in /tmp/mnts for unmounting later
+mount -o loop $LOOP /live/$MOD 2> /dev/null
+fi
+done
+done
+
+	else # For live-boot v2
+# Mount all loaded modules at boot in /live
+LOOP=$(blkid -o list -c /dev/null | grep -P "squashfs" | awk '{print $1}')
+		for i in $LOOP; do
+cat /proc/mounts | grep ' squashfs ' | while read line; do
+        LOOP=`echo ${line} | awk '{ print $1}'`
+        MOD=`basename $(echo ${line} | awk '{ print $2}')`
+    if [ $LOOP = $i ]; then
+	mkdir /live/$MOD
+	echo /live/$MOD >> /tmp/mnts # Store mountpoints in /tmp/mnts for unmounting later
+        mount -o loop $LOOP /live/$MOD 2> /dev/null
+    fi    
+done
+		done
+	fi
+NUM=$(find $(ls -d -1 /live/*/var/lib/dpkg) \( ! -path "/live/cow/*" \) \( ! -path "/live/image/*" \)  -type f -name 'status' | wc -l)
+	if [ $NUM -gt 1 ]; then
+ALL=$(find $(ls -d -1 /live/*/var/lib/dpkg) \( ! -path "/live/cow/*" \) \( ! -path "/live/image/*" \)  -type f -name 'status')
+	else
+AVAIL=$(find $(ls -d -1 /live/*/var/lib/dpkg) \( ! -path "/live/cow/*" \) \( ! -path "/live/image/*" \)  -type f -name 'available' | head -1)
+STAT=$(find $(ls -d -1 /live/*/var/lib/dpkg) \( ! -path "/live/cow/*" \) \( ! -path "/live/image/*" \)  -type f -name 'status' | head -1)
+	fi
+ALLMOD="$(find $(ls -d -1 /live/*) -maxdepth 0 \( ! -path "/live/cow" \) \( ! -path "/live/image" \) -type d)"
+for i in $ALLMOD; do
+CHROOTFS=$i=RO:$CHROOTFS
+done
+fi
+
+export SFS=$(for i in "$INSTALL"; do echo $(echo $i | sed 's| |_|g'); done)
+# truncate working directory to 100 characters
+if [ $(echo $SFS | wc -c) -gt 100 ]; then
+echo "Truncating directory name to 100 characters..."
+export SFS=$(echo $SFS | cut -c 1-99 | sed 's/$/...../')
+fi
+
+# Check for choice /tmp, / or drive and set new variable 'WORK' and 'SQFS'
+	if [ "$DRV" = "/tmp" ]; then
+WORK="/tmp/$SFS"
+SQFS="/tmp/$SFS".squashfs
+	elif [ "$DRV" = "/" ]; then
+WORK="/$SFS"
+SQFS="/$SFS".squashfs
+	else
+WORK="/mnt/$DRV/$SFS"
+SQFS="/mnt/$DRV/$SFS".squashfs
+mkdir "/mnt/$DRV" 2> /dev/null
+mount /dev/$DRV /mnt/$DRV 2> /dev/null
+	fi
+
+# Check for existing directory.
+if [ -d "$WORK" ]; then
+echo -e "Directory "$WORK" already exists, \n Please rename and run again. "
+touch /tmp/notrap_
+read -s -n 1 -p "Press any key to close . . ."
+rm -f /tmp/notrap_
+exit 0
+fi
+
+# Check if module already exists.
+if [ -f "$SQFS" ]; then
+echo -e "Module: "$SQFS" already exists, \n Please rename and run again. "
+touch /tmp/notrap_
+read -s -n 1 -p "Press any key to close . . ."
+rm -f /tmp/notrap_
+exit 0
+fi
+
+
+# Copy status and available from one of the main (mounted) module(s).
+if [ $NUM -gt 1 ]; then # If there are more than one status files found.
+
+echo $ALL | tr ' ' '\n' > /tmp/dpkgchoice
+echo
+echo -e " There are more then one dpkg registration 'status' files found in the loaded modules. \n The 'status' file lists all packages installed. \n Please choose the one you wish to use as base (starting point). \n For example in case: You have the last module in this list loaded at boot everytime. \n It's then recommended to use that. "
+
+
+cat -n /tmp/dpkgchoice
+echo "Type the number of your choice"
+read n
+number=$(cat -n /tmp/dpkgchoice | wc -l)
+if [ ${n} -gt $number ] || [ ${n} -lt 1 ]; then
+echo -e "\e[0;33mError, please type a number from following choice:\033[0m"
+cat -n /tmp/dpkgchoice
+read n
+	if [ ${n} -gt $number ] || [ ${n} -lt 1 ]; then
+echo -e "\e[0;33mError, please type a number from following choice:\033[0m"
+cat -n /tmp/dpkgchoice
+read n
+   if [ ${n} -gt $number ] || [ ${n} -lt 1 ]; then
+echo -e "\e[0;33mGiving up now, exiting...\033[0m"
+read -s -n 1 -p "Press any key to close . . ."
+exit 0
+   fi
+	fi
+fi
+DPKGDIR="$(dirname "$(echo "$ALL" | tr ' ' '\n' | sed -n "${n}p")")"
+echo dpkgdir="$DPKGDIR"
+AVAIL="$DPKGDIR/available"
+STAT="$DPKGDIR/status"
+
+fi
+
+export INSTALL=$INSTALL
+
+# Setup temp directories for mounting
+export UNION=/mnt/unionsfs_$RANDOM; mkdir -p "$UNION"
+WRITE="$WORK"; mkdir -p "$WRITE"
+
+echo -e "\e[0;36mMount bind the main module, prepare the chroot.\033[0m"
+# Mount the directories, prepare the chroot
+unionfs-fuse -o nonempty -o allow_other,suid,dev -o cow $WRITE=RW:"$CHROOTFS" "$UNION" 2> /dev/null
+if [ $? -eq 0 ]; then 
+echo -e "\e[0;32mOK\033[0m"
+sleep 1
+else
+echo -e "\e[0;31mSorry, something went wrong, exiting...\033[0m"
+rmdir "$UNION"
+rmdir "$WRITE"
+read -s -n 1 -p "Press any key to close . . ."
+exit 0
+fi
+
+export UNIONCREATED=yes
+
+echo -e "\e[0;36mCopy contents /etc/resolv.conf to provide network connection.\033[0m"
+rm -f $UNION/etc/resolv.conf && touch $UNION/etc/resolv.conf #20160918 saintless - without this the script fails after remaster
+echo -en "`cat /etc/resolv.conf`" > $UNION/etc/resolv.conf
+#cp -a /etc/resolv.conf $UNION/etc/
+cp -a /etc/apt/sources.list $UNION/etc/apt/
+[ $? -eq 0 ] && echo -e "\e[0;32mOK\033[0m"
+sleep 1
+echo -e "\e[0;36mCopy status and available files.\033[0m"
+cp -a "$AVAIL" "$UNION"/var/lib/dpkg/available
+cp -a "$STAT" "$UNION"/var/lib/dpkg/status
+[ $? -eq 0 ] && echo -e "\e[0;32mOK\033[0m"
+sleep 1
+echo -e "\e[0;36mDo the required mount binds for chroot.\033[0m"
+# Do the required mount binds for chroot
+mount --bind /proc "$UNION"/proc
+#mount --bind /tmp "$UNION"/tmp
+mount --bind /dev "$UNION"/dev
+mount --bind /sys "$UNION"/sys
+mount -t devpts devpts "$UNION"/dev/pts
+[ $? -eq 0 ] && echo -e "\e[0;32mOK\033[0m"
+sleep 1
+xhost +local:
+chroot "$UNION" /bin/bash -c check_network
+[ -f "$UNION"/tmp/_exit ] && echo -e "\e[0;31mRestoring now, there were errors\033[0m" && restore 
+chroot "$UNION" /bin/bash -c update_repo
+[ -f "$UNION"/tmp/_exit ] && echo -e "\e[0;31mRestoring now, there were errors\033[0m" && restore 
+chroot "$UNION" /bin/bash -c install_packages
+[ -f "$UNION"/tmp/_exit ] && echo -e "\e[0;31mRestoring now, there were errors\033[0m" && restore 
+
+sleep 2
+
+restore
+export RESTOREDONE=yes
+
+cd "$WORK"
+
+echo -e "\e[0;36mCleaning... (removing and zerosizing files in working-directory: $SFS)\033[0m"
+rm -f "$WORK"/etc/menu.old 
+rm -f "$WORK"/var/lib/alsa/asound.state
+rm -rf "$WORK"/dev
+rm -rf "$WORK"/tmp
+rm -rf "$WORK"/var/cache
+rm -rf "$WORK"/var/log
+rm -rf "$WORK"/.unionfs
+#rm -rf "$WORK"/run
+find "$WORK"/var/lib/dpkg -maxdepth 1 ! -name info ! -name available ! -name status ! -name dpkg -exec rm -rf {} \;
+mv -f "$WORK"/var/lib/dpkg/info "$WORK"/var/lib/dpkg/infonew
+mv -f "$WORK"/var/lib/dpkg/available "$WORK"/var/lib/dpkg/availablenew
+mv -f "$WORK"/var/lib/dpkg/status "$WORK"/var/lib/dpkg/statusnew
+rm -rf "$WORK"/var/lib/apt
+rm -f "$WORK"/etc/blkid-cache
+rm -f "$WORK"/etc/resolv.conf
+rm -rf "$WORK"/etc/udev/rules.d/70-persistent*
+rm -rf "$WORK"/var/lib/apt
+rm -rf "$WORK"/etc/apt/sources.list
+rm -rf "$WORK"/.unionfs-fuse
+
+# fredx181 skip symlinks (-type l commented out)
+zerosize() {
+  find $* | while read file; do
+    echo -n "."
+    rm -f $file
+    touch $file
+  done
+}
+
+    zerosize usr/share/doc -type f -size +1c
+#    zerosize usr/share/doc -type l
+
+    zerosize usr/share/man -type f -size +1c
+#    zerosize usr/share/man -type l
+
+
+    zerosize usr/share/info -type f -size +1c
+#    zerosize usr/share/info -type l
+
+    zerosize usr/share/gnome/help -type f -size +1c
+#    zerosize usr/share/gnome/help -type l
+
+    zerosize usr/share/gtk-doc -type f -size +1c
+#    zerosize usr/share/gtk-doc -type l
+
+#find . -maxdepth 1 -xtype l -delete
+echo
+echo -e "\e[0;32mOK\033[0m"
+
+#cd "/mnt/$DRV"
+
+# Check if mksquashfs version is 4.3 or higher
+check_mksquashfs_version=$(mksquashfs -version | awk 'NR==1 { print $3 }' | grep -o 4.3)
+verlte() {
+    [  "$1" = "`echo -e "$1\n$2" | sort -V | head -n1`" ]
+}
+
+verlt() {
+    [ "$1" = "$2" ] && return 1 || verlte $1 $2
+}
+
+if verlt $check_mksquashfs_version 4.3
+then
+yad  --center --title="Choose Compression Type" --text "    <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines. " --button=" XZ :1" --button=" GZIP :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SFS.squashfs....\033[0m"
+
+case $button1 in
+0)
+trap 'rm -f "$SQFS"' 1 2 15; mksquashfs "$WORK" "$SQFS"
+;;
+1)
+trap 'rm -f "$SQFS"' 1 2 15; mksquashfs "$WORK" "$SQFS" -comp xz -b 1M -Xbcj x86
+;;
+esac
+else
+yad  --center --title="Choose Compression Type" --text "    <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines \n  LZ4 is the fastest, but gives a larger file as GZIP. " --button=" XZ :2" --button=" GZIP :1" --button=" LZ4 :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SFS.squashfs....\033[0m"
+
+case $button1 in
+0)
+trap 'rm -f "$SQFS"' 1 2 15; mksquashfs "$WORK" "$SQFS" -comp lz4 -Xhc
+;;
+1)
+trap 'rm -f "$SQFS"' 1 2 15; mksquashfs "$WORK" "$SQFS"
+;;
+2)
+trap 'rm -f "$SQFS"' 1 2 15; mksquashfs "$WORK" "$SQFS" -comp xz -b 1M -Xbcj x86
+;;
+esac
+fi
+
+# Remove working directory?
+if [ -f "$SQFS" ]; then
+yad --title="apt2sfs" --center --text=" Done creating '$SFS.squashfs' \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+else
+yad --title="apt2sfs" --center --text=" Error: '$SQFS' is not created. \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+fi
+exit 0
+}
+export -f run_xterm
+
+xterm -T "apt2sfs" -e /bin/bash -c run_xterm
+
+exit 0

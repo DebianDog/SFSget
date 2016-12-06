@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SFS-Load GUI
+Comment=
+Exec=loadmodulegui
+Icon=sfsload
+Terminal=false
+StartupNotify=false
+Categories=DebianDog;Modules;
+
