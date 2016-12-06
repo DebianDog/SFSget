@@ -16,6 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# dec 06 2016 Fred: remove cache files, e.g. icon-theme.cache
+# e.g. update-icon-caches will recreate them
+# this prevents possible problems when deactivating a module
+
 [ "`whoami`" != "root" ] && exec gsu ${0} "$@"
 
 #. /etc/rc.d/rc.functions
@@ -99,8 +103,10 @@ post_actions_check_if_needed()
   MODULES=$(ls $CHNGS/$BUNDLE/lib/modules 2>/dev/null)
   ICONS=$(ls $CHNGS/$BUNDLE/usr/share/icons/hicolor 2>/dev/null)
   DESKTOP=$(ls $CHNGS/$BUNDLE/usr/share/applications 2>/dev/null)
+  DESKTOP1=$(ls $CHNGS/$BUNDLE/usr/local/share/applications 2>/dev/null)
   GSETTINGS=$(ls $CHNGS/$BUNDLE/usr/share/glib-2.0/schemas 2>/dev/null)
   FONTS=$(ls $CHNGS/$BUNDLE/usr/share/fonts/TTF 2>/dev/null)
+  MIME=$(ls $CHNGS/$BUNDLE/usr/share/mime/ 2>/dev/null)
 }
 
 post_actions_run_list()
@@ -111,11 +117,17 @@ post_actions_run_list()
   fi
   if [ "$ICONS" ]; then 
     echo -e $Green"ACTION:"$Color_Off" rebuilding the gtk+ icon cache"
-    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
+#    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
+    update-icon-caches /usr/share/icons/* &>/dev/null 2>&1
   fi
   if [ "$DESKTOP" ]; then
     echo -e $Green"ACTION:"$Color_Off" updating mimeinfo cache"
     update-desktop-database &>/dev/null 2>&1
+    rm -r $HOME/.cache &>/dev/null 2>&1
+  fi
+  if [ "$DESKTOP1" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating mimeinfo cache"
+    update-desktop-database /usr/local/share/applications &>/dev/null 2>&1
     rm -r $HOME/.cache &>/dev/null 2>&1
   fi
   if [ "$GSETTINGS" ]; then
@@ -128,6 +140,11 @@ post_actions_run_list()
     mkfontscale /usr/share/fonts/TTF
     mkfontdir /usr/share/fonts/TTF
   fi
+  if [ "$MIME" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating mime cache"
+    update-mime-database /usr/share/mime &>/dev/null 2>&1
+  fi
+
 }
 
 bundle_activate()
@@ -141,14 +158,22 @@ ret=$?
 fi
   check_if_exists
   check_if_deactivated
+  post_actions_check_if_needed
   # get_bundle_load_positon
+  ### remove cache files, will be recreated further in script
+  ICONCACHE=$(find $CHNGS/$BUNDLE/usr/share/icons -type f -name icon-theme.cache)
+  RMCACHE=$(echo $ICONCACHE | sed "s|$CHNGS/$BUNDLE||g")
+  rm -f $RMCACHE
+  if [ "$MIME" ]; then
+  rm -f /usr/share/mime/mime.cache 2>/dev/null
+  fi
   mkdir $CHNGS/$BUNDLE
   mount -o loop $BUNDLE $CHNGS/$BUNDLE
   mount -n -o remount,add:$POSITION:$CHNGS/$BUNDLE=rr+wh aufs /
   if [ $? -eq 0 ]; then
     echo -e $Green"SUCCESS:"$Color_Off" Module '$BUNDLE' activated"
 yad --title="LoadModule" --center --width="400" --text=" SUCCESS: Module '$BUNDLE' activated " --button="gtk-close:0" &
-    post_actions_check_if_needed
+
     post_actions_run_list
     update-menus
     FILE=$RANDOM
@@ -165,6 +190,7 @@ yad --title="LoadModule" --center --width="400" --text=" ERROR: Module '$BUNDLE'
 
 bundle_deactivate()
 {
+set -x
   check_bundle_defined
   check_if_activated
   post_actions_check_if_needed
@@ -184,6 +210,10 @@ yad --title="LoadModule" --center --width="400" --text=" SUCCESS: Module '$BUNDL
 # Force unmount
 echo "Unmounting failed, so lets find out (by 'aubusy') which process is keeping it from unloading and kill it..."
 while read line; do
+PID=$(echo "$line" | awk '{ print $1 }' 2> /dev/null)
+PROCESS=$(ps -eo pid,cmd | grep $PID  | grep -v "grep" | awk '{ print $2 }')
+# Do not kill X
+[ "$PROCESS" = "/usr/bin/X" ] && break
 kill $(echo "$line" | awk '{ print $1 }') 2> /dev/null 
 echo "$line" | awk '{ print $1 }'
 sleep 1

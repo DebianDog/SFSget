@@ -3,6 +3,8 @@
 # april 12 2015 apt2sfs version 1.0.4, Fred: added /tmp and / to the choice of where to create working dir and module.
 # febr 10 2016 apt2sfs version 1.0.8, Fred: Run the most part in xterm
 # sep 22 2016 fix from saintless for /etc/resolv.conf in UNION in case resolv.conf is a symlink
+# dec 06 2016 Fred: add to clean list: remove cache files, e.g. icon-theme.cache
+# this prevents possible problems when deactivating a module
 
 sudo -K
 
@@ -335,6 +337,13 @@ rm -f "$WORK"/etc/blkid-cache
 rm -f "$WORK"/etc/resolv.conf
 rm -rf "$WORK"/etc/udev/rules.d/70-persistent*
 rm -rf "$WORK"/var/lib/apt
+# remove all cache, will be recreated when loading module with sfs-load
+  ICONCACHE=$(find "$WORK"/usr/share/icons -type f -name icon-theme.cache)
+  RMCACHE=$(echo $ICONCACHE | sed "s|$CHNGS/$BUNDLE||g")
+  rm -f $RMCACHE
+rm -rf "$WORK"/usr/share/applications/mimeinfo.cache 2> /dev/null
+rm -rf "$WORK"/usr/local/share/applications/mimeinfo.cache 2> /dev/null
+rm -rf "$WORK"/usr/share/mime/mime.cache 2> /dev/null
 
 # fredx181 skip symlinks (-type l commented out)
 zerosize() {

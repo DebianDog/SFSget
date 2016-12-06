@@ -1,7 +1,7 @@
 Package: sfsload
 Maintainer: fredx181 dog@root.nl
 Architecture: i386
-Version: 1.0.1
+Version: 1.0.2
 Installed-Size: 47 
 Depends: libc6, yad, gsu | gksu, aufs-tools, lsof
 Description: Load a *.squashfs or *.sfs module.
