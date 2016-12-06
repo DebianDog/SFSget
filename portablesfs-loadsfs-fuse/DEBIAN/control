@@ -1,7 +1,7 @@
 Package: portablesfs-loadsfs-fuse
 Maintainer: fredx181 dog@root.nl
 Architecture: all
-Version: 1.0.5
+Version: 1.0.6
 Installed-Size: 87 
 Depends: libc6, yad, unionfs-fuse, gsu | gksu, linux-user-chroot, squashfuse, aufs-tools, lsof
 Description: Load a *.squashfs or *.sfs module.
