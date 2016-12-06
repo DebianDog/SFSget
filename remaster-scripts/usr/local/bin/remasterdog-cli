@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Edited for command line only tool from original RemasterDog, remaster script for DebianDog by Fred (fredx181)
+# The zerosize idea and function is from Jbv's FoxyRoxyLinux remastering script: http://foxyroxylinux.com
+
+[ "`whoami`" != "root" ] && exec gsu ${0}
+
+DEST="/live/image"
+
+mkdir $DEST/work-dir
+echo -n "Copying files in $DEST/work-dir... Please, wait..."
+rsync -a / $DEST/work-dir/ --exclude=/{dev,live,lib/live/mount,cdrom,mnt,proc,sys,media,run,tmp}
+
+mkdir -p $DEST/work-dir/{dev,live,lib/live/mount,proc,run,mnt,media,sys,tmp}
+cp -a /dev/console $DEST/work-dir/dev
+chmod a=rwx,o+t $DEST/work-dir/tmp
+echo ""
+
+echo -n "Cleaning..."
+rm -f $DEST/work-dir/var/lib/alsa/asound.state
+rm -f $DEST/work-dir/root/.bash_history
+rm -f $DEST/work-dir/root/.xsession-errors
+rm -rf $DEST/work-dir/root/.cache
+rm -rf $DEST/work-dir/root/.thumbnails
+rm -f $DEST/work-dir/etc/blkid-cache
+rm -rf $DEST/work-dir/etc/udev/rules.d/70-persistent*
+rm -f $DEST/work-dir/var/lib/dhcp/dhclient.eth0.leases
+rm -f $DEST/work-dir/var/lib/dhcpcd/*.lease
+rm -fr $DEST/work-dir/var/lib/aptitude/*
+echo ""
+
+ls $DEST/work-dir/var/lib/apt/lists | grep -v "lock" | grep -v "partial" | xargs -i rm $DEST/work-dir/var/lib/apt/lists/{} ;
+
+ls $DEST/work-dir/var/cache/apt/archives | grep -v "lock" | grep -v "partial" | xargs -i rm $DEST/work-dir/var/cache/apt/archives/{} ;
+
+ls $DEST/work-dir/var/cache/apt | grep -v "archives" | xargs -i rm $DEST/work-dir/var/cache/apt/{} ;
+rm -f $DEST/work-dir/var/log/* 2> /dev/null
+
+cd $DEST/work-dir
+
+# fredx181 skip symlinks (-type l commented out)
+zerosize() {
+  find $* | while read file; do
+    echo -n "."
+    rm -f $file
+    touch $file
+  done
+}
+
+    zerosize usr/share/doc -type f -size +1c
+#    zerosize usr/share/doc -type l
+
+    zerosize usr/share/man -type f -size +1c
+#    zerosize usr/share/man -type l
+
+
+    zerosize usr/share/info -type f -size +1c
+#    zerosize usr/share/info -type l
+
+    zerosize usr/share/gnome/help -type f -size +1c
+#    zerosize usr/share/gnome/help -type l
+
+    zerosize usr/share/gtk-doc -type f -size +1c
+#    zerosize usr/share/gtk-doc -type l
+
+echo ""
+
+    chown -R man:root usr/share/man
+    
+  
+cd $DEST
+
+rm -fr $DEST/work-dir/usr/share/doc/elinks
+ln -sf /usr/share/doc/elinks-data $DEST/work-dir/usr/share/doc/elinks
+
+echo ###
+echo "Now you can clean manually /tmp/work-dir if you like."
+echo "After that type 1 and press Enter to continue."
+echo ###
+echo "1)Type 1 and press Enter to continue."
+echo ###
+
+read n
+case $n in
+    1) mksquashfs $DEST/work-dir $DEST/01-filesystem.squashfs -comp xz -b 1024k -Xbcj x86 ;;
+esac
+
+
+echo ###
+echo "Do you want to delete $DEST/work-dir?"
+echo ###
+echo "1)Type 1 YES - delete $DEST/work-dir."
+echo "2)Type 2 NO and exit."
+echo ###
+echo "Type the number and press Enter."
+echo ###
+
+read n
+case $n in
+    1) rm -rf $DEST/work-dir;;
+    2) exit;;
+esac
+

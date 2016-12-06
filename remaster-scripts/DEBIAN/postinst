@@ -1,0 +1,10 @@
+#!/bin/sh
+# postinst script for remaster-scripts
+#
+# see: dh_installdeb(1)
+
+set -e
+[ -f /usr/share/applications/Remastercow-lz4.desktop ] && rm -f /usr/share/applications/Remastercow-lz4.desktop
+[ -f /usr/share/applications/Remaster-DebianDog-lz4.desktop ] && rm -f /usr/share/applications/Remaster-DebianDog-lz4.desktop
+update-menus
+

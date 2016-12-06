@@ -1,0 +1,304 @@
+#!/bin/bash
+#set -x
+# RemasterCow, script for creating module from changes for DebianDog by Fred (fredx181) and Toni (saintless)
+# april 11 2015, added /tmp and / to the choices for where to create the module
+# aug 28 2016, added choice for compression type, (lz4, gzip, xz)
+# The zerosize idea and function is from Jbv's FoxyRoxyLinux remastering script: http://foxyroxylinux.com
+
+[ "`whoami`" != "root" ] && exec gsu ${0}
+#[ "`whoami`" != "root" ] && exec xterm -geometry 25x3 -e "su - root -c ${0}"
+dpkg --purge `dpkg --get-selections | grep deinstall | cut -f1` 2> /dev/null
+
+
+	if [ -f /mnt/live/tmp/modules ]; then
+if [ -f /mnt/live/tmp/changes-exit ]; then
+yad --title="RemasterCow (create module from changes)" --center --text=" You are running the system with boot option: 'changes=EXIT:/' \n Note that the changes made in this recent session will not be included in the module. " --button="gtk-close:0"
+CHNGS="/mnt/live/memory/images/changes-exit"
+else
+CHNGS="/mnt/live/memory/changes"
+fi
+	else
+CHNGS=/live/cow
+	fi
+
+devs="$(blkid -o list | grep /dev | grep -E -v "swap|ntfs|vfat" | sort | cut -d" " -f1 | grep -E -v "/loop|sr0|swap" | sed 's|/dev/||g')"
+echo $devs
+DEVS=`echo $devs | sed 's/ /!/g'`
+SETUP=`yad --title="RemasterCow (create module from changes)" --center --text=" This script will create a module from the changes you made to the system.  \n Advised is to run this script from terminal to watch progress.  \n Choose where to create new module, must be on linux filesystem, \n NTFS or FAT filesytems are excluded. \n For no dpkg registration check the box 'Disable dpkg registration'" \
+--field="*** Click for info about dpkg registration ***:BTN" "sh -c 'echo -e "'" Question 1: What happens if I leave the default Disable dpkg registration box checked? 
+ \n Answer 1: The information for the packages included in this module will stay hidden for the system but the module will work any time you decide to load it. It will be safe also to load it on different debian system. The only disadvantage is some dependencies in this module needed for later created modules will be downloaded again and included also in the other module, but this will make possible for every module to work without the need of dependency included in another module. It is recommended to leave it this way. 
+\n Question 2: What happens if I uncheck Disable dpkg registration box? 
+\n Answer 2: Dpkg registration information from this module will overwrite the information in the main module. It is not a problem if you load this module every time on boot. You need to be sure it is the last module loaded from the system on boot by naming with higher number (02, 03, 04-my-changes.squashfs for example) and it is best to place it inside /live folder. But if you are going to load the module from time to time and like to share it with others safely, do not uncheck the box. 
+ \n More general information what Disable dpkg registration do:
+ It simply renames /var/lib/dpkg/info, /var/lib/dpkg/status, /var/lib/dpkg/available adding    new at the end. You can extract the content of every module later and make auto-update-safe dpkg database script. You can read how to do this in DebianDog HowTo thread. "'" | yad --title="'"Info dpkg registration"'" --height=550 --width=650 --text-info --wrap --button="'"gtk-close:0"'"'" \
+--window-icon="preferences-system" --form  \
+--field="  Choose where to create module::CB" "$DEVS!/tmp!/" \
+--field="Type custom name of working directory \n  (e.g. mychanges):" "" \
+--field="Type name for module with extension \n(e.g. 02-changes.squashfs):" "" \
+--field=" Disable dpkg registration:CHK" "TRUE" \
+--field=" Include whiteout files (*** click the info button below and read careful ***):CHK" "FALSE" \
+--field="*** Click here for info about whiteout files. ***:BTN" "sh -c 'echo -e "'" Question 1: Do I need to use whiteout files option? 
+ \n Answer 1: No, it is not recommended to use it. It is only advanced users option and if you do not know what whiteout files do, please, stop reading, close this window and do not touch ***Include whiteout files*** box. Just ignore it and use RemasterCow as it is set by default.
+\n Question 2: The option is included and I still like to know how it works? 
+\n Answer 2: Then, please, read careful. Whiteout files (or .wh files) mark existing files inside main 01-filesystem.squashfs module as deleted. For example if you do not use save file and decide to uninstall Synaptic, checking ***Include whiteout files*** box will include this information in the module created with RemasterCow (02-my-changes.squashfs for example). Then loading 01-filesystem.squashfs + 02-my-changes.squashfs will make /usr/bin/synaptic and all its files invisible while the files still exists in the main module. Or 02-my-changes.squashfs will act as save file. But still this is not the way to use this option properly. If you try to install Synaptic you will see the system reports Synaptic is installed. This is because the box ***Disable dpkg registration*** is checked by default and dpkg data information from 02-my-changes.squashfs is invisible for the system. The important part to remember is - if you decide to use ***Include whiteout files*** do not forget to uncheck the box ***Disable dpkg registration***. Then apt-get will report Synaptic as not installed. If you decide to use more modules with whiteout files included, the best way to prevent dpkg problems is to give higher number name to the next module (03, 04, 05...) and to load all such modules on boot by placing them inside /live directory.
+\n Question 3: What happens if I create new module with RemasterCow and check by mistake ***Include whiteout files*** box without unchecking ***Disable dpkg registration*** box?
+\n Answer 3: Nothing critical. All new installed programs and personal settings in your new module will work. Synaptic will be reported as installed from apt-get but running synaptic in terminal will not find /usr/bin/synaptic. You can uninstall synaptic with ***apt-get purge synaptic*** to make dpkg database happy or you can create new module without checking by mistake ***Include whiteout files*** box.
+\n Question 4: Seems very complicated. Why is this option added in RemasterCow?
+ \n Answer 4: Because this option makes squashfs (sfs) module behave just like save file and in some rare situations it could be useful. "'" | yad --title="'"Info dpkg registration"'" --height=630 --width=700 --text-info --wrap --button="'"gtk-close:0"'"'" \
+--button="gtk-quit:1" --button="gtk-ok:0"`
+ret=$?
+[[ $ret -eq 1 ]] && exit
+
+DRV="`echo $SETUP | cut -d "|" -f 2`"
+WRKDIR="`echo $SETUP | cut -d "|" -f 3`"
+SFS="`echo $SETUP | cut -d "|" -f 4`"
+DISDPKG="`echo $SETUP | cut -d "|" -f 5`"
+REGISTERDEL="`echo $SETUP | cut -d "|" -f 6`"
+
+echo $DRV
+echo $WRKDIR
+echo $SFS
+echo $DISDPKG
+if [ -z "$DRV" ] || [ -z "$WRKDIR" ] || [ -z "$SFS" ]; then
+yad --title="RemasterCow (create module from changes)" --center --text=" You probably did not fill in all fields, \n Please run the script again" --button="gtk-close:0"
+exit 0
+fi
+
+# Check for choice /tmp, / or drive and set new variable 'WORK' and 'SQFS'
+	if [ "$DRV" = "/tmp" ]; then
+WORK="/tmp/$WRKDIR"
+SQFS="/tmp/$SFS"
+	elif [ "$DRV" = "/" ]; then
+WORK="/$WRKDIR"
+SQFS="/$SFS"
+	else
+WORK="/mnt/$DRV/$WRKDIR"
+SQFS="/mnt/$DRV/$SFS"
+mkdir "/mnt/$DRV" 2> /dev/null
+mount /dev/$DRV /mnt/$DRV 2> /dev/null
+	fi
+
+if [ -d "$WORK" ]; then
+yad --title="RemasterDog" --center --text=" Directory "$WORK" already exists, \n Please run the script again and use other name" --button="gtk-close:0"
+exit 0
+fi
+mkdir -p "$WORK" # Make new directory.
+
+if [ -e "$SQFS" ]; then
+yad --title="RemasterDog" --center --text=" File "$SQFS" already exists, \n Please run the script again and use other name" --button="gtk-close:0"
+exit 0
+fi
+
+# running(){ ps $1 | grep $1 >/dev/null; }
+
+######### Start progress bar, copying #########
+TOTAL=$(du -cbs --apparent-size "$CHNGS" 2> /dev/null | awk 'END {print $1}')
+echo $TOTAL
+echo "Copying files to $WORK..."
+
+cp -a $CHNGS/* "$WORK" &
+
+CPPID=$(ps -eo pid,cmd | grep -v grep | grep "cp -a $CHNGS" | awk '{ print $1 }')
+trap "kill $CPPID" 1 2 15
+#CPPID=$!
+
+trap "kill $CPPID" 2 15
+
+(
+PERC=0
+   while [ $PERC ]; do    
+      COPY=$(du -cbs --apparent-size "$WORK" 2> /dev/null | awk 'END {print $1}')
+       
+      PERC=$((COPY*100/TOTAL))
+       if [ $PERC -le 100 ]; then
+       echo $PERC >> /tmp/remastercow_progress # For checking later if cancelled
+       echo $PERC 2> /dev/null
+       fi
+
+      sleep 1
+# Identify existing process ID of cp and yad progress bar
+CPPID=$(ps -eo pid,cmd | grep -v grep | grep "cp -a $CHNGS" | awk '{ print $1 }')
+YADPID=$(ps -eo pid,cmd | grep -v grep | grep "yad --title=RemasterCow (create module from changes)" | awk '{ print $1 }' | tr '\n' ' ')
+
+   if [ ! "$YADPID" ]; then # Check if progress window cancelled 
+   kill $CPPID 2> /dev/null
+   sleep 2
+   break
+   fi
+	[ -z "$CPPID" ] && break
+
+   done   
+   if [ "$YADPID" ]; then # Do below only if progress window has not been cancelled 
+   echo 99 >> /tmp/remastercow_progress
+   echo 99 2> /dev/null
+   sleep 1
+   echo 100 >> /tmp/remastercow_progress
+   echo 100 2> /dev/null
+   fi 
+) | yad --title="RemasterCow (create module from changes)" --center --height="100" --width="400" --progress --auto-close --text=" Copying files to $WORK... " --button="gtk-cancel"
+
+    if [ "$(tail -n1 /tmp/remastercow_progress)" -lt 100 ] ; then # If cancelled
+echo cancelled
+rm -f /tmp/remastercow_progress
+yad --title="RemasterCow" --center --height="100" --width="400" --text " <b>Creating module Cancelled!</b> \n The working directory: \n $WORK \n will be deleted within a minute after closing this window " --button="gtk-close"
+if [ -d "$WORK" ]; then
+echo "Removing $WORK..."
+rm -rf "$WORK"
+fi
+exit
+   fi
+
+rm -f /tmp/remastercow_progress
+######### End progress bar, copying #########
+
+echo "Cleaning..."
+rm -rf "$WORK"/etc/fltk
+rm -rf "$WORK"/etc/network
+rm -f "$WORK"/etc/blkid.tab
+rm -f "$WORK"/etc/blkid.tab.old
+rm -f "$WORK"/etc/fstab
+rm -f "$WORK"/var/cache/debconf/templates.dat-old
+rm -rf "$WORK"/var/log
+rm -rf "$WORK"/var/lib/apt/lists
+rm -rf "$WORK"/var/lib/sudo
+rm -f "$WORK"/var/lib/urandom/random-seed
+rm -rf "$WORK"/var/lib/xkb
+rm -f "$WORK"/var/lib/dpkg/available-old
+rm -f "$WORK"/var/lib/dpkg/status-old
+rm -f "$WORK"/var/lib/lock
+rm -rf "$WORK"$HOME/.fltk
+rm -f "$WORK"$HOME/.local/share/recently-used.xbel
+rm -rf "$WORK"$HOME/.local/share/Trash
+
+rm -rf "$WORK"/etc/rc.d
+rm -f "$WORK"/etc/DISTRO_SPECS
+rm -rf "$WORK"/initrd
+rm -rf "$WORK"/lib/consolefonts
+rm -rf "$WORK"/lib/keymaps
+
+rm -rf "$WORK"/{dev,tmp,mnt,media,run,lost+found}
+rm -f "$WORK"/var/lib/alsa/asound.state
+rm -f "$WORK"$HOME/.bash_history
+rm -f "$WORK"$HOME/.xsession-errors
+rm -rf "$WORK"$HOME/.cache
+rm -rf "$WORK"$HOME/.thumbnails
+rm -f "$WORK"/etc/blkid-cache
+rm -rf "$WORK"/etc/udev/rules.d/70-persistent*
+rm -f "$WORK"/var/lib/dhcp/dhclient.eth0.leases
+rm -f "$WORK"/var/lib/dhcpcd/*.lease
+rm -rf "$WORK"/var/lib/aptitude/*
+ls "$WORK"/var/lib/apt/lists | grep -v "lock" | grep -v "partial" | xargs -i rm "$WORK"/var/lib/apt/lists/{} ; 
+
+ls "$WORK"/var/cache/apt/archives | grep -v "lock" | grep -v "partial" | xargs -i rm "$WORK"/var/cache/apt/archives/{} ;
+
+ls "$WORK"/var/cache/apt | grep -v "archives" | xargs -i rm "$WORK"/var/cache/apt/{} ;
+find "$WORK" -maxdepth 1 -type l -delete
+rm -f "$WORK"/var/log/* 2> /dev/null
+
+	if [ "$DISDPKG" = "TRUE" ]; then
+mv "$WORK"/var/lib/dpkg/info "$WORK"/var/lib/dpkg/infonew
+mv "$WORK"/var/lib/dpkg/status "$WORK"/var/lib/dpkg/statusnew
+mv "$WORK"/var/lib/dpkg/available "$WORK"/var/lib/dpkg/availablenew
+	fi
+
+cd "$WORK"
+
+# fredx181 skip symlinks (-type l commented out)
+zerosize() {
+  find $* | while read file; do
+    echo -n "."
+    rm -f $file
+    touch $file
+  done
+}
+
+    zerosize usr/share/doc -type f -size +1c
+#    zerosize usr/share/doc -type l
+
+    zerosize usr/share/man -type f -size +1c
+#    zerosize usr/share/man -type l
+
+
+    zerosize usr/share/info -type f -size +1c
+#    zerosize usr/share/info -type l
+
+    zerosize usr/share/gnome/help -type f -size +1c
+#    zerosize usr/share/gnome/help -type l
+
+    zerosize usr/share/gtk-doc -type f -size +1c
+#    zerosize usr/share/gtk-doc -type l
+
+    chown -R man:root usr/share/man
+
+
+ 	if [ "$REGISTERDEL" = "FALSE" ]; then
+    	find . -name '.wh.*' -delete
+	fi
+
+rm -rf "$WORK"/usr/share/doc/elinks
+ln -sf /usr/share/doc/elinks-data "$WORK"/usr/share/doc/elinks
+
+
+# Check if mksquashfs version is 4.3 or higher
+check_mksquashfs_version=$(mksquashfs -version | awk 'NR==1 { print $3 }' | grep -o 4.3)
+verlte() {
+    [  "$1" = "`echo -e "$1\n$2" | sort -V | head -n1`" ]
+}
+
+verlt() {
+    [ "$1" = "$2" ] && return 1 || verlte $1 $2
+}
+
+if verlt $check_mksquashfs_version 4.3
+then
+yad  --center --title="RemasterCow Choose Compression Type" --text "  Now you may want to do some extra cleaning to save more space before creating module with mksquashfs.\n For example: ~/.mozilla  \n Open filemanager in '$WORK' to do so. \n  Make a choice to finally create:\n   '$SQFS'  \n  <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines. " --button=" XZ :1" --button=" GZIP :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SQFS....\033[0m"
+
+case $button1 in
+0)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS""
+;;
+1)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp xz -b 1M -Xbcj x86"
+;;
+esac
+else
+yad  --center --title="Choose Compression Type" --text "  Now you may want to do some extra cleaning to save more space before creating module with mksquashfs.\n  For example: ~/.mozilla  \n  Open filemanager in '$WORK' to do so. \n  Make a choice to finally create:\n   '$SQFS' \n   <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines \n  LZ4 is the fastest, but gives a larger file as GZIP. " --button=" XZ :2" --button=" GZIP :1" --button=" LZ4 :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SQFS....\033[0m"
+
+case $button1 in
+0)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp lz4 -Xhc"
+;;
+1)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS""
+;;
+2)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp xz -b 1M -Xbcj x86"
+;;
+esac
+fi
+
+# Remove working directory?
+if [ -f "$SQFS" ]; then
+yad --title="RemasterCow" --center --text=" Done creating '$SQFS' \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+else
+yad --title="RemasterCow" --center --text=" Error: '$SQFS' is not created. \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+fi
+exit 0

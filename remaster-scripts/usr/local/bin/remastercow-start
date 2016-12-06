@@ -1,0 +1,3 @@
+#!/bin/bash
+[ "`whoami`" != "root" ] && exec gsu-root ${0}
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e /usr/local/bin/remastercow

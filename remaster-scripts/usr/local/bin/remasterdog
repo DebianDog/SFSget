@@ -1,0 +1,308 @@
+#!/bin/bash
+
+# RemasterDog, remaster script for DebianDog by Fred (fredx181)
+# aug 28 2016, added choice for compression type, (lz4, gzip, xz)
+# The zerosize idea and function is from Jbv's FoxyRoxyLinux remastering script: http://foxyroxylinux.com
+ 
+[ "`whoami`" != "root" ] && exec gsu ${0}
+
+devs="$(blkid -o list | grep /dev | grep -E -v "swap|ntfs|vfat" | sort | cut -d" " -f1 | grep -E -v "/loop|sr0|swap" | sed 's|/dev/||g')"
+echo $devs
+DEVS=`echo $devs | sed 's/ /!/g'`
+SETUP=`yad --title="RemasterDog" --center --text=" This script will create a module from the current state of the system (including changes).  \n Advised is to run this script from terminal to watch progress.  \n If multiple modules are loaded these will be merged into one.  \n Choose where to create new module, must be on linux filesystem, \n  ntfs or fat filesytems are excluded." \
+--window-icon="preferences-system" --form  \
+--field="  Choose drive to create module on::CB" "$DEVS!/tmp!/" \
+--field="Type custom name of working directory \n  (e.g. remastered):" "" \
+--field="Type name for module with extension \n(e.g. 01-remaster.squashfs or 01-remaster.xzm):" "" \
+--button="gtk-quit:1" --button="gtk-ok:0"`
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+
+DRV="`echo $SETUP | cut -d "|" -f 1`"
+WRKDIR="`echo $SETUP | cut -d "|" -f 2`"
+SFS="`echo $SETUP | cut -d "|" -f 3`"
+
+
+if [ -z "$DRV" ] || [ -z "$WRKDIR" ] || [ -z "$SFS" ]; then
+yad --title="RemasterDog" --center --text=" You probably did not fill in all fields, \n Please run the script again" --button="gtk-close:0"
+exit 0
+fi
+
+	if [ "$DRV" = "/tmp" ]; then
+ram_size ()
+{
+    [ -r /proc/meminfo ] && \
+	grep MemTotal /proc/meminfo | \
+	sed -e 's;.*[[:space:]]\([0-9][0-9]*\)[[:space:]]kB.*;\1;' || :
+}
+
+TOTAL=$(du -cbs --apparent-size / --exclude=/{dev,live,lib/live/mount,cdrom,mnt,proc,sys,media,run,tmp,initrd,var/cache/apt,var/lib/apt} | awk 'END {print $1}' | sed 's/.\{3\}$//')
+echo total=$TOTAL
+SFSSIZE=`echo   $TOTAL/3 | bc`
+echo sfssize=$SFSSIZE
+TEMPSIZE=`df -k /tmp | awk 'END {print $3}'`
+TEMPAVAIL=`df -k /tmp | awk 'END {print $4}'`
+TOTALTEMP=`echo $TOTAL + $SFSSIZE + $TEMPSIZE | bc`
+TOTALTEMPPLUS=`echo $TOTALTEMP/50 | bc`
+TOTSIZE=`echo $TOTALTEMP + $TOTALTEMPPLUS | bc`
+echo totsize=$TOTSIZE
+RAM=$(ram_size)
+
+if [ $TOTSIZE -gt $RAM ]; then
+yad --title="RemasterDog" --center --text=" Not enough space available in /tmp. \n Please choose another option" --button="gtk-close:0" && exec ${0}
+exit 0
+fi
+if [ $TEMPAVAIL -gt $TOTSIZE ]; then
+:
+else
+result=`echo $((TOTSIZE*1000/$RAM)) | cut -b -2` 
+echo $result
+mount -t tmpfs -o "remount,nosuid,size=${result}%,mode=1777" tmpfs /tmp
+fi
+WORK="/tmp/$WRKDIR"
+SQFS="/tmp/$SFS"
+
+	elif [ "$DRV" = "/" ]; then
+chksize() {
+ROOTAVAIL=`df -k / | awk 'END {print $4}'`
+echo rootavail=$ROOTAVAIL
+TOTAL=$(du -cbs --apparent-size / --exclude=/{dev,live,lib/live/mount,cdrom,mnt,proc,sys,media,run,tmp,initrd,var/cache/apt,var/lib/apt} | awk 'END {print $1}' | sed 's/.\{3\}$//')
+SFSSIZE=`echo   $TOTAL/3 | bc`
+echo sfssize=$SFSSIZE
+TOTALROOT=`echo $TOTAL + $SFSSIZE | bc`
+echo totrootsize=$TOTALROOT
+TOTALROOTPLUS=`echo $TOTALROOT/50 | bc`
+TOTSIZE=`echo $TOTALROOT + $TOTALROOTPLUS | bc`
+echo totsize=$TOTSIZE
+}
+chksize
+if [ $TOTSIZE -gt $ROOTAVAIL ]; then
+if [ -f /mnt/live/tmp/changes-exit ]; then
+echo "Increasing ramsize for /mnt/live/memory/changes to 100%"
+echo "After that we will check again if available space is sufficient"
+mount -t tmpfs -o "remount,nosuid,size=100%,rw" tmpfs /mnt/live/memory/changes
+chksize
+fi
+fi
+
+if [ $TOTSIZE -gt $ROOTAVAIL ]; then
+echo "Sorry, not enough space available in / ."
+yad --width=400 --title="RemasterDog" --center --text="  Sorry, not enough space available in / . \n  The reason could be that: \n  Your save file/partition has not enough space left. \n  Please choose another option." --button="gtk-close:0" && exec ${0}
+fi
+
+WORK="/$WRKDIR"
+SQFS="/$SFS"
+
+	else
+WORK="/mnt/$DRV/$WRKDIR"
+SQFS="/mnt/$DRV/$SFS"
+mkdir "/mnt/$DRV" 2> /dev/null
+mount /dev/$DRV /mnt/$DRV 2> /dev/null
+	fi
+
+if [ -d "$WORK" ]; then
+yad --title="RemasterDog" --center --text=" Directory "$WORK" already exists, \n Please run the script again and use other name" --button="gtk-close:0"
+exit 0
+fi
+mkdir -p "$WORK" # Make new directory.
+
+if [ -e "$SQFS" ]; then
+yad --title="RemasterDog" --center --text=" File "$SQFS" already exists, \n Please run the script again and use other name" --button="gtk-close:0"
+exit 0
+fi
+
+# running(){ ps $1 | grep $1 >/dev/null; }
+
+######## Start Progress bar, rsync copying #########
+TOTAL=$(du -cbs --apparent-size /* --exclude=/{dev,live,lib/live/mount,cdrom,mnt,proc,sys,media,run,tmp,initrd,$WRKDIR} | awk 'END {print $1}')
+echo $TOTAL
+
+echo "Copying files to $WORK..."
+
+rsync -a / "$WORK" --exclude=/{dev,live,lib/live/mount,cdrom,mnt,proc,sys,media,run,tmp,initrd,$WRKDIR} 2> /dev/null &
+
+# Check for existing process ID's of rsync
+RSYNCPID=$(ps -eo pid,cmd | grep -v grep | grep "rsync -a / $WORK" | awk '{ print $1 }' | tr '\n' ' ')
+
+trap "kill $RSYNCPID" 1 2 15 # kill rsync processes when interrupted
+
+(
+PERC=0
+   while [ $PERC ]; do
+  
+      COPY=$(du -cbs --apparent-size "$WORK" 2> /dev/null | awk 'END {print $1}')
+       
+      PERC=$((COPY*100/TOTAL))       
+       if [ $PERC -lt 100 ]; then
+       echo $PERC >> /tmp/remasterdog_progress # For checking later if cancelled
+       echo $PERC 2> /dev/null
+       fi
+
+      sleep 1
+# Identify existing process ID's of rsync
+RSYNCPID=$(ps -eo pid,cmd | grep -v grep | grep "rsync -a / $WORK" | awk '{ print $1 }' | tr '\n' ' ')
+# Identify existing process ID of yad progress bar 
+YADPID=$(ps -eo pid,cmd | grep -v grep | grep "yad --title=RemasterDog" | awk '{ print $1 }' | tr '\n' ' ')
+
+   if [ ! "$YADPID" ]; then # Check if progress window cancelled 
+   kill $RSYNCPID 2> /dev/null
+   sleep 2
+   break
+   fi
+	[ -z "$RSYNCPID" ] && break
+
+   done
+   sleep 2
+   if [ "$YADPID" ]; then # Do below only if progress window has not been cancelled 
+   echo 100 >> /tmp/remasterdog_progress 
+   echo 100 2> /dev/null
+   fi
+) | yad --title="RemasterDog" --center --height="100" --width="400" --progress --auto-close --text=" Copying files to "$WORK"... " --button="gtk-cancel"
+
+   if [ "$(tail -n1 /tmp/remasterdog_progress)" -lt 100 ] ; then # If cancelled
+echo cancelled
+rm -f /tmp/remasterdog_progress
+yad --title="RemasterDog" --center --height="100" --width="400" --text " <b>Remastering Cancelled!</b> \n The working directory: \n $WORK \n will be deleted within a minute after closing this window " --button="gtk-close"
+if [ -d "$WORK" ]; then
+echo "Removing $WORK..."
+rm -rf "$WORK"
+fi
+exit
+   else
+rm -f /tmp/remasterdog_progress
+sleep 2
+echo "Check now for any left over process ID's from rsync, should not show any below"
+RSYNCPID=$(ps -eo pid,cmd | grep -v grep | grep "rsync -a / $WORK" | awk '{ print $1 }' | tr '\n' ' ')
+echo "$RSYNCPID" # For debugging, needs to be empty
+      if [ -z "$RSYNCPID" ]; then
+      echo "OK, Continuing..."
+      else
+      wait # Probably not needed, just in case there is still existing rsync pid
+      echo "Continuing..."
+      fi
+   fi
+########### End Progress bar, rsync copying ############
+
+mkdir -p "$WORK"/{dev,live,lib/live/mount,proc,run,mnt,media,sys,tmp}
+cp -a /dev/console "$WORK"/dev
+chmod a=rwx,o+t "$WORK"/tmp
+
+echo "Cleaning..."
+rm -f "$WORK"/var/lib/alsa/asound.state
+rm -f "$WORK"/root/.bash_history
+rm -f "$WORK"/root/.xsession-errors
+rm -rf "$WORK"/root/.cache
+rm -rf "$WORK"/root/.thumbnails
+rm -f "$WORK"/etc/blkid-cache
+rm -rf "$WORK"/etc/udev/rules.d/70-persistent*
+rm -f "$WORK"/var/lib/dhcp/dhclient.eth0.leases
+rm -f "$WORK"/var/lib/dhcpcd/*.lease
+rm -rf "$WORK"/etc/rc.d
+rm -f "$WORK"/etc/DISTRO_SPECS
+rm -rf "$WORK"/lib/consolefonts
+rm -rf "$WORK"/lib/keymaps
+rm -fr "$WORK"/var/lib/aptitude/*
+ls "$WORK"/var/lib/apt/lists | grep -v "lock" | grep -v "partial" | xargs -i rm "$WORK"/var/lib/apt/lists/{} ; 
+
+ls "$WORK"/var/cache/apt/archives | grep -v "lock" | grep -v "partial" | xargs -i rm "$WORK"/var/cache/apt/archives/{} ;
+
+ls "$WORK"/var/cache/apt | grep -v "archives" | xargs -i rm "$WORK"/var/cache/apt/{} ;
+rm -f "$WORK"/var/log/* 2> /dev/null
+
+cd "$WORK"
+
+# fredx181 skip symlinks (-type l commented out)
+zerosize() {
+  find $* | while read file; do
+    echo -n "."
+    rm -f $file
+    touch $file
+  done
+}
+
+    zerosize usr/share/doc -type f -size +1c
+#    zerosize usr/share/doc -type l
+
+    zerosize usr/share/man -type f -size +1c
+#    zerosize usr/share/man -type l
+
+
+    zerosize usr/share/info -type f -size +1c
+#    zerosize usr/share/info -type l
+
+    zerosize usr/share/gnome/help -type f -size +1c
+#    zerosize usr/share/gnome/help -type l
+
+    zerosize usr/share/gtk-doc -type f -size +1c
+#    zerosize usr/share/gtk-doc -type l
+
+    chown -R man:root usr/share/man
+
+
+
+rm -fr "$WORK"/usr/share/doc/elinks
+ln -sf /usr/share/doc/elinks-data "$WORK"/usr/share/doc/elinks
+
+# Check if mksquashfs version is 4.3 or higher
+check_mksquashfs_version=$(mksquashfs -version | awk 'NR==1 { print $3 }' | grep -o 4.3)
+verlte() {
+    [  "$1" = "`echo -e "$1\n$2" | sort -V | head -n1`" ]
+}
+
+verlt() {
+    [ "$1" = "$2" ] && return 1 || verlte $1 $2
+}
+
+if verlt $check_mksquashfs_version 4.3
+then
+yad  --center --title="Choose Compression Type" --text "  Now you may want to do some extra cleaning to save more space before creating module with mksquashfs.\n For example: ~/.mozilla  \n Open filemanager in '$WORK' to do so. \n  Make a choice to finally create:\n   '$SQFS'  \n  <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines. " --button=" XZ :1" --button=" GZIP :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SQFS....\033[0m"
+
+case $button1 in
+0)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS""
+;;
+1)
+xterm -T "RemasterCow" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp xz -b 512k -Xbcj x86"
+;;
+esac
+else
+yad  --center --title="Choose Compression Type" --text "  Now you may want to do some extra cleaning to save more space before creating module with mksquashfs.\n  For example: ~/.mozilla  \n  Open filemanager in '$WORK' to do so. \n  Make a choice to finally create:\n   '$SQFS' \n   <b>Choose which algorthim to compress the sfs with.</b> \n  Chosing XZ here will give you a smaller file but \n  may be slower than GZIP on very lowspec machines \n  LZ4 is the fastest, but gives a larger file as GZIP. " --button=" XZ :2" --button=" GZIP :1" --button=" LZ4 :0" --buttons-layout=spread
+
+button1=$?
+# Create module.
+echo -e "\e[0;36mCreating $SQFS....\033[0m"
+
+case $button1 in
+0)
+xterm -T "RemasterDog" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp lz4 -Xhc"
+;;
+1)
+xterm -T "RemasterDog" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS""
+;;
+2)
+xterm -T "RemasterDog" -si -sb -fg white -bg SkyBlue4 -geometry 65x14 -e "mksquashfs "$WORK" "$SQFS" -comp xz -b 512k -Xbcj x86"
+;;
+esac
+fi
+
+# Remove working directory?
+if [ -f "$SQFS" ]; then
+yad --title="RemasterDog" --center --text=" Done creating '$SQFS' \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+else
+yad --title="RemasterDog" --center --text=" Error: '$SQFS' is not created. \n Do you want to remove '$WORK'? " --button="gtk-yes:0" --button="gtk-no:1"
+ret=$?
+[[ $ret -ne 0 ]] && exit 0
+if [[ -n "$SFS" && -n "$DRV" ]]; then
+rm -rf "$WORK"
+fi
+fi
+exit 0

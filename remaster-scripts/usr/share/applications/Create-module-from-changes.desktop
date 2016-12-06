@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Create module from changes
+Exec=remastercow-start
+Icon=application-x-squashfs2.png
+Terminal=false
+StartupNotify=false
+Categories=DebianDog;X-XFCE;X-Xfce-Toplevel;Modules;
+

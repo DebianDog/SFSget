@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Remaster-DebianDog
+Exec=remasterdog-start
+Icon=application-x-squashfs2.png
+Terminal=false
+StartupNotify=false
+Categories=DebianDog;X-XFCE;X-Xfce-Toplevel;Modules;
+
