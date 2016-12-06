@@ -1,0 +1,166 @@
+#!/bin/bash
+
+if [ -z `which gsu` ]; then
+[ "`whoami`" != "root" ] && exec gksu ${0} "$@"
+else
+[ "`whoami`" != "root" ] && exec gsu ${0} "$@"
+fi
+
+function info () {
+echo -e ' Q:  What is the difference between "'SFS-load mode'" and "'Chroot mode'" ? \n \n A:  The SFS-load mode means that the created portable script will activate the module by mounting it on / using aufs (same as SFS-load does), this is the most reliable way but it is a bit slow. \n Chroot mode means that created portable script will mount the module on a directory with unique name in /mnt and / (rootfs) will also be mounted  in /mnt/, overlayed with the mounted module (using unionfs-fuse). \n Then by "'chrooting'" into it, the program(s) can be started from the popup-menu (quicker this way). \n The "'Chroot mode'" has the advantage that the portable-script and the module can be run from a folder that is part of the filesystem e.g. in "'/home/puppy/abiword'" in contrary to the "'SFS-load mode'" that works only if the module and the script are on an "'actual'" storage, such as a harddisk or usbdrive. \n Other advantages: \n - it can be used on a full install also.\n - no prompt for password when running as regular user \n Note: For complex applications, sometimes the "'Chroot mode'" might not work properly, in this case use the "'SFS-load mode'"   \n \n Q:  I am logged in as root, what is the difference if I check the "'Run only as root'" box?  \n \n A:  If you are always logged in as root, there is no difference, running the created portable script will run as root anyway... but in case you run the script when logged in as normal (unprivileged) user: \n Some programs need to be run with root privileges, for example: gparted. \n That is what the checkbox is for. \n If this is not the case, for example: abiword, better do not check it, so it will run as normal user (if logged in as) and keeps its configuration files in /home/<yourusername>. \n \n *** Below applies only for Sfs-Load Mode *** \n (the "'Chroot mode'" will mount the module and run the program in chroot without prompt for password) \n Q: Strange, I am logged in with normal user account, did not check the box: Run only as root. When I run the portable script it prompts for my password. \n \n A: The portable script needs to run as root first to activate the module, then: it switches to your user account to execute the program (e.g. abiword).' | yad --margins 7 --title="Info about running created portable script" --height=730 --width=750 --text-info --wrap --button="gtk-close:0"
+}
+export -f info
+
+SETUP=`yad --center --title="Create portable sfs script"  --text="             <b>Create portable sfs script</b>  \n Running created script will activate the chosen module. \n If a command is entered it will be executed directly.\n Otherwise an 'Applications' menu will appear. \n The module will be unloaded when you close the menu. " \
+--window-icon="preferences-system" --form --columns=1 \
+--field=" Choose mode (click "'"Information"'" for more info):LBL" "" \
+--field=" :CB" "SFS-load mode!Chroot mode" \
+--field=" Choose a module: \n The script will be named after it in the same folder. \n Extension can be: .squashfs, .xzm, .sfs or .sb :LBL" "" \
+--field=" :FL" "/media/*" \
+--field=" Enter command to be executed, e.g. abiword (<b>optional</b>) \n (leave this empty to show 'Applications' menu): :LBL" "" \
+--field=" " "" \
+--field=" By default the program will run as the logged-in user. \n Check the box below to make it run only as root. :LBL" "" \
+--field=" Run only as root  (click "'"Information"'" for more info):CHK" "FALSE" \
+--button="gtk-info:bash -c info" --button="gtk-quit:1" --button="gtk-ok:0"`
+ ret=$?
+[[ $ret -ne 0 ]] && exit
+
+MODE="`echo $SETUP | cut -d "|" -f 2`"
+MODULE="`echo $SETUP | cut -d "|" -f 4`"
+CMD="`echo $SETUP | cut -d "|" -f 6`"
+ASROOT="`echo $SETUP | cut -d "|" -f 8`"
+
+echo $SETUP
+
+case $MODULE in
+
+*.xzm|*.squashfs|*.sfs|*.sb)
+
+MODULEDIR="`dirname $MODULE`"
+BASEMOD=`basename "$MODULE"`
+MODULENAME=`echo ${BASEMOD%.*}`
+PORTABLENAME="$MODULENAME"-portable
+if [ -z "$MODULE" ]; then
+yad --title="Create portable sfs script" --center --text=" You probably did not fill in all fields, \n Please run again" --button="gtk-close:0"
+exit 0
+fi
+if [ -f "$MODULEDIR/$PORTABLENAME" ]; then
+yad --center --title="Create portable sfs script" --text=" '"$PORTABLENAME"' already exists , \n Please rename first and run again.     " --button="gtk-close:0"
+exit 0
+fi
+
+   if [ "$MODE" = "SFS-load mode" ]; then
+[ ! -f /opt/docs/portablesfs.template ] && yad --center --title="Create portable sfs script" --text=" No 'portablesfs.template' found in /opt/docs. \n Please check your installation.     " --button="gtk-close:0" && exit 0
+cp -a /opt/docs/portablesfs.template "$MODULEDIR/$PORTABLENAME"
+BASEMODULE="`basename "$MODULE"`"
+
+
+if [ -z "$CMD" ]; then
+CMD="apps"
+else
+CMD="$CMD"
+fi
+
+	if [ "$ASROOT" = "FALSE" ]; then
+echo 'apps () {
+yad --icons --compact --read-dir="/.unionfs" --width 300 --height 300 --title "Applications" --text "     :: Doubleclick to run ::" --text-align="center" --button="gtk-close:0"
+}
+export -f apps
+BUNDLE="$APPDIR/'"$BASEMODULE"'"
+cd "`dirname "$BUNDLE"`"
+BUNDLE="`basename "$BUNDLE"`"
+POSITION=$POSITION
+bundle_activate
+setup_menu
+user=`cat /tmp/sfs-portable-user 2> /dev/null`
+rm -f /tmp/sfs-portable-user 2> /dev/null
+if [ -n "$user" ] && [ "$user" != "root" ]; then
+xhost +local:$user
+cd /
+su $user env LD_LIBRARY_PATH=/opt/lib:/usr/local/lib /bin/bash -c '"$CMD"'
+else
+cd /
+'"$CMD"'
+fi
+sleep 1
+rm -rf /.unionfs
+bundle_deactivate
+exit 0' >> "$MODULEDIR/$PORTABLENAME"
+
+	else
+
+echo 'apps () {
+yad --icons --compact --read-dir="/.unionfs" --width 300 --height 300 --title "Applications" --text "     :: Doubleclick to run ::" --text-align="center" --button="gtk-close:0"
+}
+export -f apps
+rm -f /tmp/sfs-portable-user 2> /dev/null # Remove the file from possible previous run
+BUNDLE="$APPDIR/'"$BASEMODULE"'"
+cd "`dirname "$BUNDLE"`"
+BUNDLE="`basename "$BUNDLE"`"
+POSITION=$POSITION
+bundle_activate
+setup_menu
+cd /
+'"$CMD"'
+sleep 1
+rm -rf /.unionfs
+bundle_deactivate
+exit 0' >> "$MODULEDIR/$PORTABLENAME"
+	fi
+
+ ret=$?
+[[ $ret -eq 0 ]] && yad --center --title="Create portable sfs script" --text=" Portable sfs script: \n "$MODULEDIR/$PORTABLENAME" \n created!  " --button="gtk-close:0"
+
+   elif [ "$MODE" = "Chroot mode" ]; then
+
+if [ -z "$CMD" ]; then
+CMD="chroot_in"
+else
+CMD="$CMD"
+fi
+
+
+BASEMODULE="`basename "$MODULE"`"
+[ ! -f /opt/docs/portablesfs-chroot.template ] && yad --center --title="Create portable sfs script" --text=" No 'portablesfs-chroot.template' found in /opt/docs. \n Please check your installation.     " --button="gtk-close:0" && exit 0
+cp -a /opt/docs/portablesfs-chroot.template "$MODULEDIR/$PORTABLENAME"
+	if [ "$ASROOT" = "TRUE" ]; then
+sed -i 's,ASROOT=,ASROOT=yes,g' "$MODULEDIR/$PORTABLENAME"
+	fi
+sed -i 's,SFS=,SFS="$SFSDIR/'$BASEMODULE'",g' "$MODULEDIR/$PORTABLENAME"
+
+echo 'function comnd() {
+echo -e "\e[0;32mFlying into the chroot now... :)\033[0m"
+export PATH=/opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
+export LD_LIBRARY_PATH="/opt/lib:/usr/local/lib:$APP/opt/lib:$APP/usr/local/lib:$APP/usr/lib:$APP/usr/lib/i386-linux-gnu:$APP/lib"
+DEFAULT_XDG_DATA_DIRS='/usr/local/share/:/usr/share/'
+if [ -z "$XDG_DATA_DIRS" ]; then
+    export XDG_DATA_DIRS="$DEFAULT_XDG_DATA_DIRS":$APP/usr/share/
+else
+    export XDG_DATA_DIRS="$XDG_DATA_DIRS":$APP/usr/share/
+fi
+'"$CMD"'
+}
+export -f comnd
+	if [ "`whoami`" != "root" ]; then
+xhost +local:
+linux-user-chroot --mount-proc /proc --mount-bind /dev /dev  --mount-bind /dev/pts /dev/pts  --mount-bind /sys /sys --mount-bind /tmp /tmp "$UNION" /bin/bash -c comnd
+unmount_all
+	else
+xhost +local:
+chroot "$UNION" /bin/bash -c post_actions_run_list
+chroot "$UNION" /bin/bash -c comnd
+sleep 2
+unmount_all
+	fi
+exit 0' >> "$MODULEDIR/$PORTABLENAME"
+ ret=$?
+	
+[[ $ret -eq 0 ]] && yad --center --title="Create portable sfs script" --text=" Portable sfs script: \n "$MODULEDIR/$PORTABLENAME" \n created! \n Note: The chroot mode requires to have unionfs-fuse installed. " --button="gtk-close:0"
+
+   fi
+;;
+*)
+yad --center --title="Create portable sfs script" --text="    Not a valid module file,               \n    Please run again.                " --button="gtk-close:0"
+exit 0
+;;
+esac

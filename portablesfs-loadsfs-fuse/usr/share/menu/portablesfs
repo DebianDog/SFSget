@@ -1,0 +1,7 @@
+?package(portablesfs-loadsfs-fuse):\
+	needs="X11"\
+	section="Applications/Utilities"\
+	title="SFS-Portable"\
+	command="portablesfs"\
+	icon="loadsfs.png"
+

@@ -1,0 +1,5 @@
+The 'loadsfs-fuse-writesfs' script doesn't leave any traces behind in the filesystem / but:
+It writes the config files (or any other) that a program creates to: /root/<name_of_module> directory (e.g. /root/023-abiword-2.8.6-docx.squashfs)
+When loading a module using 'loadsfs-fuse-writesfs' a program will read the content of /root/<name_of_module>.
+So, to start fresh everytime you need to delete /root/<name_of_module>.
+ 

@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if [ -L /usr/local/bin/portablesfs ]; then
+rm -f /usr/local/bin/portablesfs
+else
+echo "Link does not exist."
+fi
+

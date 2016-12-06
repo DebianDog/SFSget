@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Terminal=false
+Comment=Create a script to load sfs and run application
+Categories=DebianDog;Modules
+Name=SFS-Portable
+Exec=portablesfs
+Icon=loadsfs.png
+

@@ -1,0 +1,26 @@
+#!/bin/sh
+# postinst script for portablesfs
+#
+# see: dh_installdeb(1)
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+echo $PATH > /tmp/p.txt
+if grep -q /opt/bin /tmp/p.txt;then
+echo "/opt/bin is in PATH"
+else
+ln -sf /opt/bin/portablesfs /usr/local/bin/portablesfs
+fi
+rm -f /tmp/p.txt
+
+[ -f "/usr/share/applications/Create portable sfs script.desktop" ] && rm -f "/usr/share/applications/Create portable sfs script.desktop" 
+
+update-menus
+
+
+
+db_stop;
+
+exit 0

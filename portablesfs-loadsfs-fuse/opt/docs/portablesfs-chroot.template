@@ -1,0 +1,232 @@
+#!/bin/bash
+
+ASROOT=
+
+	if [ "$ASROOT" = "yes" ]; then
+if [ -z `which gsu` ]; then
+[ "`whoami`" != "root" ] && exec gksu ${0} "$@"
+else
+[ "`whoami`" != "root" ] && exec gsu ${0} "$@"
+fi
+	fi
+
+# Function to cleanly unmount if the script is interrupted
+exitfn () {
+	if [ "`whoami`" != "root" ]; then
+echo "Unloading module..."
+# Unmount everything
+fusermount -u "$UNION" -o allow_other 2> /dev/null
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+fusermount -u -z "$UNION" -o allow_other 2> /dev/null
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+fusermount -u -z "$APP" -o allow_other 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   else
+fusermount -u "$APP" -o allow_other 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   fi
+	else
+echo "Unloading module..."
+#post_actions_run_list
+# Unmount everything
+umount "$UNION"/tmp
+umount "$UNION"/proc
+umount "$UNION"/dev/pts
+umount "$UNION"/dev
+umount "$UNION"/sys
+umount "$UNION"
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+umount -l "$UNION"/tmp
+umount -l "$UNION"/proc 2> /dev/null
+umount -l "$UNION"/dev/pts
+umount -l "$UNION"/dev
+umount -l "$UNION"/sys 2> /dev/null
+umount -l "$UNION"
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+umount -l "$APP" 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   else
+umount "$APP" 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   fi
+	fi
+rm -rf /.unionfs 2> /dev/null
+rm -rf $HOME/unionfs 2> /dev/null
+exit
+}
+
+trap "exitfn" 1 2 15           # Set up SIGINT trap to call function 'exitfn'.
+
+
+SFSDIR="$(dirname "$(readlink -f "$0")")"
+SFS=
+
+# Function for "Applications" gui
+function chroot_in() {
+export PATH=/opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
+export LD_LIBRARY_PATH="/opt/lib:/usr/local/lib:$APP/opt/lib:$APP/usr/local/lib:$APP/usr/lib:$APP/usr/lib/i386-linux-gnu:$APP/lib"
+DEFAULT_XDG_DATA_DIRS='/usr/local/share/:/usr/share/'
+if [ -z "$XDG_DATA_DIRS" ]; then
+    export XDG_DATA_DIRS="$DEFAULT_XDG_DATA_DIRS":$APP/usr/share/
+else
+    export XDG_DATA_DIRS="$XDG_DATA_DIRS":$APP/usr/share/
+fi
+yad --icons --compact --read-dir="$HOME/unionfs" --width 300 --height 300 --title "Applications" --text "     :: Doubleclick to run ::" --text-align="center" --button="gtk-close:0"
+}
+export -f chroot_in
+
+unmount_all() {
+	if [ "`whoami`" != "root" ]; then
+echo "Unloading module..."
+# Unmount everything
+fusermount -u "$UNION" -o allow_other 2> /dev/null
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+fusermount -u -z "$UNION" -o allow_other 2> /dev/null
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+fusermount -u -z "$APP" -o allow_other 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   else
+fusermount -u "$APP" -o allow_other 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   fi
+	else
+echo "Unloading module..."
+#post_actions_run_list
+# Unmount everything
+umount "$UNION"/tmp
+umount "$UNION"/proc
+umount "$UNION"/dev/pts
+umount "$UNION"/dev
+umount "$UNION"/sys
+umount "$UNION"
+   if [ "$?" -ne 0 ]; then # Try the -l umount option (lazy) in this case
+echo "Try to gently force unmounting of $UNION..."
+umount -l "$UNION"/tmp
+umount -l "$UNION"/proc 2> /dev/null
+umount -l "$UNION"/dev/pts
+umount -l "$UNION"/dev
+umount -l "$UNION"/sys 2> /dev/null
+umount -l "$UNION"
+# As last resort use brute force in this (rare) case
+[ "$?" -ne 0 ] && killall unionfs-fuse && echo "Forced unmounting of $UNION"
+umount -l "$APP" 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   else
+umount "$APP" 2> /dev/null
+rmdir "$UNION"
+rmdir "$APP"
+[ "$?" -eq 0 ] && echo "Succesfully unmounted and cleaned up!"
+   fi
+	fi
+rm -rf /.unionfs 2> /dev/null
+rm -rf $HOME/unionfs 2> /dev/null
+exit
+}
+
+post_actions_run_list()
+{
+MODULES=$(ls $APP/lib/modules 2>/dev/null)
+  if [ "$MODULES" ]; then 
+    echo -e $Green"ACTION:"$Color_Off" updating loadable kernel modules list"
+    depmod -a
+  fi
+ICONS=$(ls $APP/usr/share/icons/hicolor 2>/dev/null)
+  if [ "$ICONS" ]; then 
+    echo -e $Green"ACTION:"$Color_Off" rebuilding the gtk+ icon cache"
+    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
+  fi
+DESKTOP=$(ls $APP/usr/share/applications 2>/dev/null)
+  if [ "$DESKTOP" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating mimeinfo cache"
+    update-desktop-database &>/dev/null 2>&1
+    rm -r $HOME/.cache &>/dev/null 2>&1
+  fi
+GSETTINGS=$(ls $APP/usr/share/glib-2.0/schemas 2>/dev/null)
+  if [ "$GSETTINGS" ]; then
+    echo -e $Green"ACTION:"$Color_Off" gsettings xml schema files"
+    glib-compile-schemas /usr/share/glib-2.0/schemas &>/dev/null 2>&1
+  fi
+FONTS=$(ls $APP/usr/share/fonts/TTF 2>/dev/null)
+  if [ "$FONTS" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating font cache"
+    fc-cache -f -s > /dev/null
+    mkfontscale /usr/share/fonts/TTF
+    mkfontdir /usr/share/fonts/TTF
+  fi
+}
+export -f post_actions_run_list
+
+# Mount the directories, prepare the chroot
+	if [ "`whoami`" != "root" ]; then
+# Setup temp directories for mounting
+export UNION=/dev/shm/unionsfs_$RANDOM; mkdir -p "$UNION"
+export APP=/dev/shm/appsfs_$RANDOM; mkdir -p "$APP"
+squashfuse "$SFS" "$APP"
+unionfs-fuse -o nonempty -o allow_other,suid,dev -o cow /=RW:"$APP"=RO "$UNION"
+	else
+# Setup temp directories for mounting
+export UNION=/mnt/unionsfs_$RANDOM; mkdir -p "$UNION"
+export APP=/mnt/appsfs_$RANDOM; mkdir -p "$APP"
+mount -o loop "$SFS" "$APP"
+unionfs-fuse -o nonempty -o allow_other,suid,dev -o cow /=RW:"$APP"=RO "$UNION"
+
+# Do the required mount binds for chroot
+mount --bind /proc "$UNION"/proc
+mount --bind /tmp "$UNION"/tmp
+mount --bind /dev "$UNION"/dev
+mount --bind /sys "$UNION"/sys
+mount -t devpts devpts "$UNION"/dev/pts
+	fi
+
+# Setup directory for .desktop lauchers (to read by yad --icons) and copy them
+mkdir $HOME/unionfs
+cp -a "$APP"/usr/share/applications/*.desktop $HOME/unionfs/
+
+# Remove extension (if any) from Icon= entry (otherwise yad-menu shows no icon) 
+while read line; do
+ICON=$(grep -m 1 -r Icon= "$line" | cut -d "=" -f 2 | cut -d % -f 1)
+FULL=`echo "$ICON" | grep '/' 2> /dev/null`
+if [ -z "$FULL" ]; then
+BASE=`echo ${ICON%.*}`
+BASENAME="$(basename "$line")"
+sed -i 's#Icon=.*#Icon='"$BASE"'#g' "$HOME/unionfs/$BASENAME"
+fi
+APPLINE=$(grep 'Type=Application' "$line")
+if [ -z "$APPLINE" ]; then
+BASENAME="$(basename "$line")"
+echo 'Type=Application' >> "$HOME/unionfs/$BASENAME"
+fi
+done <<< "$(ls $HOME/unionfs/*.desktop)"
+
+# Create Xterm.desktop in $HOME/unionfs
+echo '[Desktop Entry]
+Version=1.0
+Type=Application
+Name=XTerm
+Comment=standard terminal emulator for the X window system
+Exec=xterm
+Icon=xterm-color_48x48
+Path=
+Terminal=false
+StartupNotify=false
+' > $HOME/unionfs/Xterm.desktop
