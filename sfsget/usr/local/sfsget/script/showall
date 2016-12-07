@@ -1,45 +1,27 @@
 #!/bin/bash
-### search for a squashfs module and download ###
-### fredx181 2016-12-07 search is much faster, elinks scans releases dir in one step now
  
 .  /usr/local/sfsget/script/functions 
 
 RESTART=$0
 TITLE="SFS Downloader"
-TEXT=" Search the repository for a .squashfs module "
+TEXT=" All available .squashfs modules "
 TEXT1="             <b>Downloads</b> in progress:"        # dialog text
 ICON="browserdload"                     # window icon (appears in launcher)
 IMAGE="browserdload"
 
-## search gui ##
-GUI=$(yad --image="application-x-squashfs" --image-on-top --center --title="$TITLE" --text="$TEXT  " --form \
---field="Search" \
---button="gtk-go-back:1"  --button="gtk-ok:0" )
-button=$?
-case $button in
 
-1) 
-  echo "Exiting" && exit  
-;; 
- 
-0)
-## if no search string restart ##
- search=` echo $GUI | cut -d '|' -f1 `
- if [[ ! -n "$search" ]]; then 
- echo "no search string entered" && $RESTART && exit
- fi
 
-## display searched packages ##
+## display all modules ##
 
 export HOSTDIR="https://github.com/DebianDog/SFSget/releases/"
 MODULES=$(elinks -dump "$HOSTDIR" | grep 'releases/download/' | awk '/https/{print $2}')
 SEARCHLIST=$(echo $MODULES | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$SEARCHLIST"
-ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}' | grep -i "$search")
-echo $ALLITEMS
-ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$ALLITEMS"; done <<< "$(echo "$SEARCHLIST")")
 
-GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
+ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}')
+
+ALL=$(while read line; do echo application-x-squashfs $line; done <<< "$(echo "$SEARCHLIST")")
+
+GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" $TEXT \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
 button1=$?
 echo $GUI1
 case $button1 in
@@ -123,7 +105,7 @@ done | yad --center --multi-progress --on-top --auto-kill $YADBARS --title "$TIT
  fi
 ;;
 esac
-esac
+
 
 
 
