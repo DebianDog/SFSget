@@ -1,5 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 ### search for a squashfs module and download ###
+### fredx181 2016-12-07 search is much faster, elinks scans releases dir in one step now
  
 .  /usr/local/sfsget/script/functions 
 
@@ -11,7 +12,7 @@ ICON="browserdload"                     # window icon (appears in launcher)
 IMAGE="browserdload"
 
 ## search gui ##
-GUI=$(yad --center --title="$TITLE" --text="$TEXT" --form \
+GUI=$(yad --center --title="$TITLE" --text="$TEXT \n Tip: Type <b><i>squashfs</i></b> to show all available modules  " --form \
 --field="Search" \
 --button="gtk-go-back:1"  --button="gtk-ok:0" )
 button=$?
@@ -30,60 +31,15 @@ case $button in
 
 ## display searched packages ##
 
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Desktop/"
-Desktop=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Desktop' | awk '/https/{print $2}')")
-Desktop=$(echo $Desktop | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Desktop" > /tmp/sfsget_search
+export HOSTDIR="https://github.com/DebianDog/SFSget/releases/"
+MODULES=$(elinks -dump "$HOSTDIR" | grep 'releases/download/' | awk '/https/{print $2}')
+SEARCHLIST=$(echo $MODULES | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
+echo "$SEARCHLIST"
+ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}' | grep -i "$search")
+echo $ALLITEMS
+ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$ALLITEMS"; done <<< "$(echo "$SEARCHLIST")")
 
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Document/"
-Document=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Document' | awk '/https/{print $2}')")
-Document=$(echo $Document | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Document" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Filesystem/"
-Filesystem=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Filesystem' | awk '/https/{print $2}')")
-Filesystem=$(echo $Filesystem | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Filesystem" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Fun/"
-Fun=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Fun' | awk '/https/{print $2}')")
-Fun=$(echo $Fun | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Fun" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Graphics/"
-Graphics=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Graphics' | awk '/https/{print $2}')")
-Graphics=$(echo $Graphics | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Graphics" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Internet/"
-Internet=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Internet' | awk '/https/{print $2}')")
-Internet=$(echo $Internet | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Internet" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Multimedia/"
-Multimedia=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Multimedia' | awk '/https/{print $2}')")
-Multimedia=$(echo $Multimedia | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Multimedia" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Network/"
-Network=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Network' | awk '/https/{print $2}')")
-Network=$(echo $Network | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Network" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/System/"
-System=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/System' | awk '/https/{print $2}')")
-System=$(echo $System | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$System" >> /tmp/sfsget_search
-
-export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Utility/"
-Utility=$(while read line; do echo $line; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Utility' | awk '/https/{print $2}')")
-Utility=$(echo $Utility | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$Utility" >> /tmp/sfsget_search
-
-# all items to search for in /tmp/sfsget_search
-ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$search"; done <<< "$(cat /tmp/sfsget_search)")
-
-GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column=":IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
+GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
 button1=$?
 echo $GUI1
 case $button1 in

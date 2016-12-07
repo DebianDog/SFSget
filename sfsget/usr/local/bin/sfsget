@@ -1,6 +1,7 @@
 #!/bin/bash
 
-### fredx181 sfsget, SFS downloader, very much based on ppack by stu90 ###
+### fredx181 sfsget, SFS downloader, very much based on ppack by stu90 see:
+### http://www.murga-linux.com/puppy/viewtopic.php?t=73100&sid=ac01429fef40c4725cb7b51696803b6b ###
 ### depends on yad, elinks, wget ###
 
 if [ -z `which gsu` ]; then
