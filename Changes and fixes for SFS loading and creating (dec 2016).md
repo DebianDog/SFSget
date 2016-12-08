@@ -5,12 +5,15 @@ The problem was mostly that deactivating (unloading) didn't work in some cases.
 Therefore the scripts that can be used to create a module e.g. apt2sfs, remastercow needed modifying too.  
 
 **New:**   
-- Created SFS repository: Extra Modules splitted in categories https://github.com/DebianDog/SFSget/releases
-- package: 'sfsget' for downloading from above repository
+- Created SFS repository: [Extra Modules splitted in categories](https://github.com/DebianDog/SFSget/releases)   
+All modules are without dpkg registration, e.g. not included /var/lib/dpkg/status file, this means it cannot break the dpkg database.   
+- package: 'sfsget' for downloading from above repository, install:
+```
 apt-get update
 apt-get install sfsget
+```   
 SfsGet is replacement for the script 'sfs-get' that's part of sfs-get-smokey-get package.
-All modules are without dpkg registration, e.g. not included /var/lib/dpkg/status file, this means it cannot break the dpkg database.
+
 
 
 #### Fixes 2016-12-08 (see more details below):
@@ -22,9 +25,8 @@ Upgrade the following packages to latest version:
 
 ##### Details:
 In case loading a .squashfs module 'on the fly' there were problems, i.e. when unloading (deactivating)
-Sometime ago I thought to have found the solution by using aubusy (from the aufs-tools package)...
-...find the pid of the process (using aubusy) that prevents unloading (unmounting in fact) and kill it.
-When testing more with several modules it appeared wrong because some processes were killed unwanted, for example Thunar and xfce4-panel.
-More research lead me to a solution: remove all the cache files; e.g. mimeinfo.cache, mime.cache and icon-theme.cache files first when loading, the script will recreate them using e.g. 'update-icon-caches' or 'update-desktop-database' commands.
-Then unloading a module works fine from what I tested.
-
+Sometime ago I _thought_ to have found the solution by using aubusy (from the aufs-tools package)...
+...find the pid of the process (using aubusy) that prevents unloading (unmounting in fact) and kill it.   
+When testing more with several modules it appeared wrong because some processes were killed unwanted, for example Thunar and xfce4-panel.   
+More research lead me to a solution: remove all the cache files; e.g. mimeinfo.cache, mime.cache and icon-theme.cache files first when loading, the 'loadmodule' script will recreate them by using e.g. 'update-icon-caches' or 'update-desktop-database' commands.   
+Then unloading a module works fine from what I tested.  
