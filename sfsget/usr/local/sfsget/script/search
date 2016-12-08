@@ -29,17 +29,27 @@ case $button in
  echo "no search string entered" && $RESTART && exit
  fi
 
-## display searched packages ##
+# if searched for more than one word
+for i in $search; do
+#SRCH="$SRCH\|$i"
+SRCH="$SRCH""(?=.*"$i")" # (search for ... and ...)
+done
+#SRCH=$(echo "$SRCH" | sed "s#^[\]|##")
+# echo $SRCH
+
+## display searched modules ##
 
 export HOSTDIR="https://github.com/DebianDog/SFSget/releases/"
 MODULES=$(elinks -dump "$HOSTDIR" | grep 'releases/download/' | awk '/https/{print $2}')
 SEARCHLIST=$(echo $MODULES | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
-echo "$SEARCHLIST"
-ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}' | grep -i "$search")
+#echo "$SEARCHLIST"
+ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}' | grep -Pih ^"$SRCH")
 echo $ALLITEMS
 ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$ALLITEMS"; done <<< "$(echo "$SEARCHLIST")")
+TEXT2="    Search results for <b>$search</b> \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download. " 
+[ -z "$ALLITEMS" ] && ALL="" && TEXT2=" <b>Sorry, no results for '$search'</b> "
 
-GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" Search results for '$search' \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
+GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" $TEXT2 " --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
 button1=$?
 echo $GUI1
 case $button1 in
@@ -119,7 +129,7 @@ done | yad --center --multi-progress --on-top --auto-kill $YADBARS --title "$TIT
 # launch yad multi progress-bar window
 
   else
-  echo "No package selected" && $RESTART && exit
+  echo "No package selected" && unset ALL && $RESTART && exit
  fi
 ;;
 esac
