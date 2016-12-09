@@ -1,12 +1,13 @@
 Package: sfsload
 Maintainer: fredx181 dog@root.nl
 Architecture: i386
-Version: 1.0.2
+Version: 1.0.3
 Installed-Size: 47 
 Depends: libc6, yad, gsu | gksu, aufs-tools, lsof
 Description: Load a *.squashfs or *.sfs module.
  Changes compared to included scripts in DebianDog-2015-09-02 iso: loadmodule and loadsfs
  In case unloading failed at first, find out (by 'aubusy', from aufs-tools) which process is keeping it from unloading and kill it, then try again.
+
 
 
 

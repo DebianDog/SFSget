@@ -108,14 +108,18 @@ post_actions_check_if_needed()
 
 post_actions_run_list()
 {
+  if [ "$MIME" ]; then
+    echo -e $Green"ACTION:"$Color_Off" updating mime cache"
+    update-mime-database /usr/share/mime &>/dev/null 2>&1
+  fi
   if [ "$MODULES" ]; then 
     echo -e $Green"ACTION:"$Color_Off" updating loadable kernel modules list"
     depmod -a
   fi
   if [ "$ICONS" ]; then 
     echo -e $Green"ACTION:"$Color_Off" rebuilding the gtk+ icon cache"
-#    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
     update-icon-caches /usr/share/icons/* &>/dev/null 2>&1
+    gtk-update-icon-cache --force /usr/share/icons/hicolor &>/dev/null 2>&1
   fi
   if [ "$DESKTOP" ]; then
     echo -e $Green"ACTION:"$Color_Off" updating mimeinfo cache"
@@ -137,10 +141,6 @@ post_actions_run_list()
     mkfontscale /usr/share/fonts/TTF
     mkfontdir /usr/share/fonts/TTF
   fi
-  if [ "$MIME" ]; then
-    echo -e $Green"ACTION:"$Color_Off" updating mime cache"
-    update-mime-database /usr/share/mime &>/dev/null 2>&1
-  fi
 }
 
 bundle_activate()
@@ -149,7 +149,6 @@ bundle_activate()
   check_bundle_defined
   check_if_exists
   check_if_deactivated
-  post_actions_check_if_needed
   # get_bundle_load_positon
   ### remove cache files, will be recreated further in script
   ICONCACHE=$(find $MNTPATH/$BUNDLE/usr/share/icons -type f -name icon-theme.cache)
@@ -163,6 +162,14 @@ bundle_activate()
   mount -n -o remount,add:$POSITION:$MNTPATH/$BUNDLE=rr aufs /
   if [ $? -eq 0 ]; then
     echo -e $Green"SUCCESS:"$Color_Off" Module '$BUNDLE' activated"
+  post_actions_check_if_needed
+  ### remove cache files, will be recreated further in script
+  ICONCACHE=$(find $MNTPATH/$BUNDLE/usr/share/icons -type f -name icon-theme.cache)
+  RMCACHE=$(echo $ICONCACHE | sed "s|$MNTPATH/$BUNDLE||g")
+  rm -f $RMCACHE
+  if [ "$MIME" ]; then
+  [ -f $MNTPATH/$BUNDLE/usr/share/mime/mime.cache ] && rm -f /usr/share/mime/mime.cache 2>/dev/null
+  fi
 
     post_actions_run_list
 #    update-menus
