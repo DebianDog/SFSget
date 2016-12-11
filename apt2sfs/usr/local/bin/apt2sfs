@@ -503,7 +503,7 @@ rm -rf "$WORK"/etc/apt/sources.list
 rm -rf "$WORK"/.unionfs-fuse
 # remove all cache, will be recreated when loading module with sfs-load
   ICONCACHE=$(find "$WORK"/usr/share/icons -type f -name icon-theme.cache)
-  RMCACHE=$(echo $ICONCACHE | sed "s|$CHNGS/$BUNDLE||g")
+  RMCACHE=$(echo $ICONCACHE | sed "s|$WORK||g")
   rm -f $RMCACHE
 rm -rf "$WORK"/usr/share/applications/mimeinfo.cache 2> /dev/null
 rm -rf "$WORK"/usr/local/share/applications/mimeinfo.cache 2> /dev/null
@@ -534,6 +534,7 @@ zerosize() {
     zerosize usr/share/gtk-doc -type f -size +1c
 #    zerosize usr/share/gtk-doc -type l
 
+    chown -R man:root usr/share/man
 #find . -maxdepth 1 -xtype l -delete
 echo
 echo -e "\e[0;32mOK\033[0m"
