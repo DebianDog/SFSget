@@ -10,9 +10,9 @@ TEXT1="             <b>Downloads</b> in progress:"        # dialog text
 export HOSTDIR="https://github.com/DebianDog/SFSget/releases/tag/Network/"
 export DLHOSTDIR="https://github.com/DebianDog/SFSget/releases/download/Network/"
 
-ALL=$(while read line; do echo application-x-squashfs `basename $line`; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Network' | awk '/https/{print $2}')") 
+ALL=$(while read line; do echo /usr/local/sfsget/icon/connect48_28x28.png `basename $line`; done <<< "$(elinks -dump "$HOSTDIR" | grep 'releases/download/Network' | awk '/https/{print $2}')") 
 #ALL="$CONTENTFILE"
-GUI=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="$TITLE" --multiple --text=" Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG"  --column " Available Modules" $ALL --print-column=2 --button="gtk-quit:1" --button="gtk-ok:0")
+GUI=$(yad --separator=" " --image="/usr/local/sfsget/icon/connect48.png" --image-on-top  --window-icon="application-x-squashfs" --center --height 500 --width="500" --list --title="$TITLE" --multiple --text=" Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download." --column="     :IMG"  --column " Available Modules" $ALL --print-column=2 --button="gtk-quit:1" --button="gtk-ok:0")
 
 button1=$?
 case $button1 in

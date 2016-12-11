@@ -2,7 +2,8 @@
 
 ### fredx181 sfsget, SFS downloader, very much based on ppack by stu90 see:
 ### http://www.murga-linux.com/puppy/viewtopic.php?t=73100&sid=ac01429fef40c4725cb7b51696803b6b
-### 2016-12-07 Added 'Show All' button ### 
+### 2016-12-07 Added 'Show All' button ###
+### 2016-12-11 Changes in scripts: show category icons in lists 
 ### depends on yad, elinks, wget ###
 
 if [ -z `which gsu` ]; then
@@ -13,7 +14,7 @@ fi
 
 RESTART=$0
 TITLE="SFSget"
-VER="0.1"
+VER="0.2"
 TEXT=" Download .squashfs modules. Pick a category first. "
 
 GUI=$(yad --center --image="application-x-squashfs" --image-on-top --window-icon="application-x-squashfs" --title="$TITLE $VER" --text="$TEXT"  --geometry="525x320" --icons --read-dir="/usr/local/sfsget/desktop/" --single-click --buttons-layout=spread \

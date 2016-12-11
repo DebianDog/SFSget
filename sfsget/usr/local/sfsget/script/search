@@ -44,12 +44,28 @@ MODULES=$(elinks -dump "$HOSTDIR" | grep 'releases/download/' | awk '/https/{pri
 SEARCHLIST=$(echo $MODULES | tr ' ' '\n' | rev | sed 's|/| |' | rev | sort -u)
 #echo "$SEARCHLIST"
 ALLITEMS=$(echo "$SEARCHLIST"  | awk '{print $2}' | grep -Pih ^"$SRCH")
-echo $ALLITEMS
-ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$ALLITEMS"; done <<< "$(echo "$SEARCHLIST")")
+#echo $ALLITEMS
+# ALL=$(while read line; do echo application-x-squashfs $line |grep -i "$ALLITEMS"; done <<< "$(echo "$SEARCHLIST")")
+ALL=$(
+while read line; do
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Desktop" ] && ICON=/usr/local/sfsget/icon/harddrive48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Document" ] && ICON=/usr/local/sfsget/icon/edit48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Filesystem" ] && ICON=/usr/local/sfsget/icon/drive_mntd48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Fun" ] && ICON=/usr/local/sfsget/icon/games48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Graphics" ] && ICON=/usr/local/sfsget/icon/paint48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Internet" ] && ICON=/usr/local/sfsget/icon/www48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Multimedia" ] && ICON=/usr/local/sfsget/icon/multimedia48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Network" ] && ICON=/usr/local/sfsget/icon/connect48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "System" ] && ICON=/usr/local/sfsget/icon/configuration48_28x28.png
+[ "$(basename $(echo $line | awk '{print $1}'))" = "Utility" ] && ICON=/usr/local/sfsget/icon/utility48_28x28.png
+echo $ICON $line |grep -i "$ALLITEMS";
+done <<< "$(echo "$SEARCHLIST")"
+)
+
 TEXT2="    Search results for <b>$search</b> \n Download SFS modules (.squashfs or .sfs). \n Select (multiple) items to download. " 
 [ -z "$ALLITEMS" ] && ALL="" && TEXT2=" <b>Sorry, no results for '$search'</b> "
 
-GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" $TEXT2 " --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
+GUI1=$(yad --separator=" " --image="application-x-squashfs" --image-on-top --window-icon="application-x-squashfs" --center --height 500 --width="500" --list --title="Download SFS module" --multiple --text=" $TEXT2 " --column="     :IMG" --column " Available Modules" $ALL --column Name --hide-column=2 --button="gtk-go-back:1"  --button="gtk-ok:0")
 button1=$?
 echo $GUI1
 case $button1 in
