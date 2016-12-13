@@ -2,7 +2,7 @@
 SFSget and extra modules for Jessie version 2016-10-16
 
 The 'sfsget' application can be used to download .squashfs modules from releases section:   
-[Extra Modules splitted in categories](https://github.com/DebianDog/SFSget/releases)  
+[Extra Modules split in categories](https://github.com/DebianDog/SFSget/releases)  
 
 Wiki:  
 [SFSget](https://github.com/DebianDog/SFSget/wiki/SFSget)     

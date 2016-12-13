@@ -5,7 +5,7 @@ The problem was mostly that deactivating (unloading) didn't work in some cases.
 Therefore the scripts that can be used to create a module e.g. apt2sfs, remastercow needed modifying too.  
 
 **New:**   
-- Created SFS repository: [Extra Modules splitted in categories](https://github.com/DebianDog/SFSget/releases)   
+- Created SFS repository: [Extra Modules split in categories](https://github.com/DebianDog/SFSget/releases)   
 All modules are without dpkg registration, e.g. not included /var/lib/dpkg/status file, this means it cannot break the dpkg database.   
 - package: 'sfsget' for downloading from above repository, install:
 ```
